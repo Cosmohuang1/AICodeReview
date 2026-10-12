@@ -52,11 +52,11 @@
 </head>
 <body class="min-h-screen flex text-[13px] antialiased selection:bg-orange-100 selection:text-orange-900 bg-[#fbfbfd]">
 
-  <!-- ==================== 1. 左侧侧边栏 (Sidebar - 1:1 对标) ==================== -->
+  <!-- ==================== 1. 左侧侧边栏 (支持普通模式与设置/仓库模式) ==================== -->
   <aside class="w-64 bg-[#f8f9fa] border-r border-[#eaecf0] flex flex-col justify-between shrink-0 h-screen sticky top-0 select-none z-30">
     
-    <!-- 顶部工作区与导航 -->
-    <div class="p-3 space-y-4 overflow-y-auto">
+    <!-- 侧边栏内容区 -->
+    <div class="p-3 space-y-3 overflow-y-auto">
       
       <!-- 组织与工作区切换 -->
       <div class="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-[#eceef2] cursor-pointer transition-colors">
@@ -77,82 +77,171 @@
         <span class="absolute right-2 top-2 text-[10px] text-zinc-400 bg-white border border-zinc-200 rounded px-1 font-mono">Ctrl K</span>
       </div>
 
-      <!-- 核心功能导航 -->
-      <nav class="space-y-0.5">
-        <a href="javascript:void(0)" class="nav-item flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] transition-colors" data-view="triage">
-          <i data-lucide="inbox" class="w-4 h-4 text-zinc-500"></i>
-          <span>Triage</span>
-        </a>
+      <!-- A. 工作区菜单模式 (默认) -->
+      <div id="sidebarWorkspaceMenu" class="space-y-4">
+        <nav class="space-y-0.5">
+          <a href="javascript:void(0)" class="nav-item flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] transition-colors" data-view="triage">
+            <i data-lucide="inbox" class="w-4 h-4 text-zinc-500"></i>
+            <span>Triage</span>
+          </a>
 
-        <a href="javascript:void(0)" id="navNewTask" class="nav-item flex items-center justify-between px-2.5 py-1.5 rounded-md bg-[#e9ecef] font-semibold text-zinc-900 transition-colors" data-view="workspace">
-          <div class="flex items-center gap-2.5">
-            <i data-lucide="code-2" class="w-4 h-4 text-zinc-700"></i>
-            <span>New coding task</span>
-          </div>
-          <span class="text-[10px] px-1.5 py-0.2 rounded bg-zinc-300/80 text-zinc-700 font-medium">Beta</span>
-        </a>
-
-        <a href="javascript:void(0)" class="nav-item flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] transition-colors" data-view="security">
-          <i data-lucide="shield-alert" class="w-4 h-4 text-zinc-500"></i>
-          <span>Run security scan</span>
-        </a>
-
-        <!-- Analytics 可折叠菜单 -->
-        <div class="pt-1">
-          <div class="flex items-center justify-between px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] cursor-pointer" onclick="toggleAnalytics()">
+          <a href="javascript:void(0)" id="navNewTask" class="nav-item flex items-center justify-between px-2.5 py-1.5 rounded-md bg-[#e9ecef] font-semibold text-zinc-900 transition-colors" data-view="workspace">
             <div class="flex items-center gap-2.5">
-              <i data-lucide="bar-chart-2" class="w-4 h-4 text-zinc-500"></i>
-              <span>Analytics</span>
+              <i data-lucide="code-2" class="w-4 h-4 text-zinc-700"></i>
+              <span>New coding task</span>
             </div>
-            <i data-lucide="chevron-down" id="analyticsChevron" class="w-3.5 h-3.5 text-zinc-400 transition-transform"></i>
-          </div>
+            <span class="text-[10px] px-1.5 py-0.2 rounded bg-zinc-300/80 text-zinc-700 font-medium">Beta</span>
+          </a>
 
-          <div id="analyticsSubmenu" class="pl-7 pr-1 py-0.5 space-y-0.5">
-            <a href="javascript:void(0)" class="nav-item flex items-center gap-2 px-2 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] relative" data-view="analytics">
-              <span class="w-1 h-3.5 bg-orange-500 rounded-full absolute -left-1 hidden active-indicator"></span>
-              <span>PR reviews</span>
-            </a>
-            <a href="javascript:void(0)" class="nav-item flex items-center gap-2 px-2 py-1 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-[#eceef2]" data-view="analytics">
-              <span>IDE/CLI reviews</span>
-            </a>
-            <a href="javascript:void(0)" class="nav-item flex items-center gap-2 px-2 py-1 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-[#eceef2]" data-view="analytics">
-              <span>Review usage</span>
-            </a>
-            <a href="javascript:void(0)" class="nav-item flex items-center gap-2 px-2 py-1 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-[#eceef2]" data-view="analytics">
-              <span>Reports</span>
+          <a href="javascript:void(0)" class="nav-item flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] transition-colors" data-view="security">
+            <i data-lucide="shield-alert" class="w-4 h-4 text-zinc-500"></i>
+            <span>Run security scan</span>
+          </a>
+
+          <!-- Analytics 可折叠菜单 -->
+          <div class="pt-1">
+            <div class="flex items-center justify-between px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] cursor-pointer" onclick="toggleAnalytics()">
+              <div class="flex items-center gap-2.5">
+                <i data-lucide="bar-chart-2" class="w-4 h-4 text-zinc-500"></i>
+                <span>Analytics</span>
+              </div>
+              <i data-lucide="chevron-down" id="analyticsChevron" class="w-3.5 h-3.5 text-zinc-400 transition-transform"></i>
+            </div>
+
+            <div id="analyticsSubmenu" class="pl-7 pr-1 py-0.5 space-y-0.5">
+              <a href="javascript:void(0)" class="nav-item flex items-center gap-2 px-2 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2]" data-view="analytics">
+                <span>PR reviews</span>
+              </a>
+              <a href="javascript:void(0)" class="nav-item flex items-center gap-2 px-2 py-1 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-[#eceef2]" data-view="analytics">
+                <span>IDE/CLI reviews</span>
+              </a>
+              <a href="javascript:void(0)" class="nav-item flex items-center gap-2 px-2 py-1 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-[#eceef2]" data-view="analytics">
+                <span>Review usage</span>
+              </a>
+              <a href="javascript:void(0)" class="nav-item flex items-center gap-2 px-2 py-1 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-[#eceef2]" data-view="analytics">
+                <span>Reports</span>
+              </a>
+            </div>
+          </div>
+        </nav>
+
+        <!-- Recents 历史审查列表 -->
+        <div class="pt-2">
+          <div class="text-[11px] font-medium text-zinc-400 px-2.5 mb-1.5 tracking-wider uppercase">Recents</div>
+          <div id="recentsList" class="space-y-0.5">
+            <!-- 动态从后端加载 -->
+          </div>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="pt-2">
+          <div class="text-[11px] font-medium text-zinc-400 px-2.5 mb-1.5 tracking-wider uppercase">Quick actions</div>
+          <div class="space-y-0.5">
+            <button onclick="switchToReposView()" class="w-full flex items-center gap-2 px-2.5 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] text-left">
+              <i data-lucide="plus" class="w-3.5 h-3.5 text-zinc-400"></i>
+              <span>Add repositories</span>
+            </button>
+            <a href="javascript:void(0)" class="flex items-center gap-2 px-2.5 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2]">
+              <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5 text-zinc-400"></i>
+              <span>Personal scope</span>
             </a>
           </div>
         </div>
-      </nav>
 
-      <!-- Recents 历史审查列表 (完美对应截图) -->
-      <div class="pt-2">
-        <div class="text-[11px] font-medium text-zinc-400 px-2.5 mb-1.5 tracking-wider uppercase">Recents</div>
-        <div id="recentsList" class="space-y-0.5">
-          <!-- 动态从后端加载 -->
-        </div>
-      </div>
-
-      <!-- Quick actions -->
-      <div class="pt-2">
-        <div class="text-[11px] font-medium text-zinc-400 px-2.5 mb-1.5 tracking-wider uppercase">Quick actions</div>
-        <div class="space-y-0.5">
-          <button onclick="promptChangeRepo()" class="w-full flex items-center gap-2 px-2.5 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] text-left">
-            <i data-lucide="plus" class="w-3.5 h-3.5 text-zinc-400"></i>
-            <span>Add repositories</span>
-          </button>
-          <a href="javascript:void(0)" class="flex items-center gap-2 px-2.5 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2]">
-            <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5 text-zinc-400"></i>
-            <span>Personal scope</span>
+        <div class="pt-1">
+          <a href="javascript:void(0)" onclick="switchToReposView()" class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2]">
+            <i data-lucide="settings" class="w-4 h-4 text-zinc-500"></i>
+            <span>Settings</span>
           </a>
         </div>
       </div>
 
-      <div class="pt-1">
-        <a href="javascript:void(0)" class="nav-item flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2]" data-view="settings">
-          <i data-lucide="settings" class="w-4 h-4 text-zinc-500"></i>
-          <span>Settings</span>
-        </a>
+      <!-- B. 设置与仓库管理菜单模式 (对标第 4 张截图左侧) -->
+      <div id="sidebarSettingsMenu" class="space-y-4 hidden">
+        <!-- 返回工作区 -->
+        <button onclick="switchToWorkspaceView()" class="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-zinc-700 hover:text-zinc-900 hover:bg-[#eceef2] font-medium text-xs transition-colors">
+          <i data-lucide="arrow-left" class="w-4 h-4 text-zinc-500"></i>
+          <span>Back to work</span>
+        </button>
+
+        <!-- General 分组 -->
+        <div class="space-y-1">
+          <div class="flex items-center justify-between px-2.5 py-1 text-xs font-semibold text-zinc-900">
+            <div class="flex items-center gap-2">
+              <i data-lucide="wrench" class="w-3.5 h-3.5 text-zinc-500"></i>
+              <span>General</span>
+            </div>
+            <i data-lucide="chevron-up" class="w-3.5 h-3.5 text-zinc-400"></i>
+          </div>
+          <div class="pl-3 space-y-0.5">
+            <a href="javascript:void(0)" class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-zinc-900 font-semibold relative bg-zinc-100/80">
+              <span class="w-1 h-3.5 bg-orange-500 rounded-full absolute -left-1"></span>
+              <span>Connected repositories</span>
+            </a>
+            <a href="javascript:void(0)" class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2]">
+              <span>Connections</span>
+            </a>
+            <a href="javascript:void(0)" class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2]">
+              <span>Scopes</span>
+            </a>
+            <a href="javascript:void(0)" class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2]">
+              <span>Environments</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Product 分组 -->
+        <div class="space-y-1 pt-1">
+          <div class="text-[11px] font-medium text-zinc-400 px-2.5 uppercase tracking-wider">Product</div>
+          <div class="space-y-0.5">
+            <div class="flex items-center justify-between px-2.5 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] cursor-pointer">
+              <div class="flex items-center gap-2"><i data-lucide="git-pull-request" class="w-3.5 h-3.5 text-zinc-400"></i><span>Reviews</span></div>
+              <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
+            </div>
+            <div class="flex items-center justify-between px-2.5 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] cursor-pointer">
+              <div class="flex items-center gap-2"><i data-lucide="shield" class="w-3.5 h-3.5 text-zinc-400"></i><span>Security</span></div>
+              <i data-lucide="gift" class="w-3.5 h-3.5 text-amber-500"></i>
+            </div>
+            <div class="flex items-center justify-between px-2.5 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] cursor-pointer">
+              <div class="flex items-center gap-2"><i data-lucide="code" class="w-3.5 h-3.5 text-zinc-400"></i><span>Coding</span><span class="text-[9px] px-1 rounded bg-zinc-200">Beta</span></div>
+              <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
+            </div>
+            <div class="flex items-center justify-between px-2.5 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2] cursor-pointer">
+              <div class="flex items-center gap-2"><i data-lucide="zap" class="w-3.5 h-3.5 text-zinc-400"></i><span>Automations</span><span class="text-[9px] px-1 rounded bg-zinc-200">Beta</span></div>
+              <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Communication 分组 -->
+        <div class="space-y-1 pt-1">
+          <div class="text-[11px] font-medium text-zinc-400 px-2.5 uppercase tracking-wider">Communication</div>
+          <div class="flex items-center justify-between px-2.5 py-1 rounded-md text-zinc-600 hover:text-zinc-900 hover:bg-[#eceef2]">
+            <div class="flex items-center gap-2"><i data-lucide="message-square" class="w-3.5 h-3.5 text-zinc-400"></i><span>Slack</span></div>
+            <span class="text-[10px] px-1.5 py-0.2 rounded bg-orange-100 text-orange-700 font-medium">Set up</span>
+          </div>
+        </div>
+
+        <!-- 杂项链接 -->
+        <div class="space-y-0.5 pt-1 text-zinc-600">
+          <div class="flex items-center justify-between px-2.5 py-1 rounded-md hover:bg-[#eceef2] cursor-pointer">
+            <div class="flex items-center gap-2"><i data-lucide="credit-card" class="w-3.5 h-3.5 text-zinc-400"></i><span>Billing</span></div>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
+          </div>
+          <div class="flex items-center justify-between px-2.5 py-1 rounded-md hover:bg-[#eceef2] cursor-pointer">
+            <div class="flex items-center gap-2"><i data-lucide="user" class="w-3.5 h-3.5 text-zinc-400"></i><span>Account</span></div>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
+          </div>
+          <a href="https://github.com/Cosmohuang1/AICodeReview" target="_blank" class="flex items-center justify-between px-2.5 py-1 rounded-md hover:bg-[#eceef2]">
+            <div class="flex items-center gap-2"><i data-lucide="book-open" class="w-3.5 h-3.5 text-zinc-400"></i><span>Documentation</span></div>
+            <i data-lucide="external-link" class="w-3.5 h-3.5 text-zinc-400"></i>
+          </a>
+          <div class="flex items-center justify-between px-2.5 py-1 text-zinc-400 text-[11px] pt-1">
+            <span>CR-09A19A</span>
+            <i data-lucide="copy" class="w-3 h-3 cursor-pointer hover:text-zinc-600"></i>
+          </div>
+        </div>
+
       </div>
 
     </div>
@@ -176,35 +265,25 @@
   </aside>
 
   <!-- ==================== 2. 主体视图区域 ==================== -->
-  
-  <!-- VIEW A: New Coding Task (对标第 1 张截图) -->
+
+  <!-- VIEW 1: New Coding Task (第 1 张截图) -->
   <main id="viewWorkspace" class="view-content flex-1 flex flex-col items-center justify-start pt-16 pb-16 px-4 max-w-4xl mx-auto w-full">
-    
-    <!-- 主标题 -->
     <h1 class="text-3xl font-bold tracking-tight text-zinc-900 mb-8 text-center">
       What do you want to build, Cosmohuang1?
     </h1>
 
-    <!-- 核心指令 Prompt 输入卡片 (带橙色高亮边框) -->
     <div class="w-full bg-white border-2 border-orange-400/80 rounded-2xl shadow-sm hover:shadow-md transition-shadow p-4 mb-4 relative">
       <textarea id="taskPromptInput" rows="3" class="w-full bg-transparent text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none resize-none leading-relaxed" placeholder="Write tests for the checkout flow..."></textarea>
       
-      <!-- 输入框底部控制胶囊 -->
       <div class="flex items-center justify-between pt-3 border-t border-zinc-100 mt-2 text-xs text-zinc-500">
         <div class="flex items-center gap-2 flex-wrap">
-          <button class="p-1.5 rounded-full hover:bg-zinc-100 text-zinc-500" title="Add context">
-            <i data-lucide="plus" class="w-4 h-4"></i>
-          </button>
-          <button class="p-1.5 rounded-full hover:bg-zinc-100 text-zinc-500" title="Assignees">
-            <i data-lucide="users" class="w-4 h-4"></i>
-          </button>
+          <button class="p-1.5 rounded-full hover:bg-zinc-100 text-zinc-500" title="Add context"><i data-lucide="plus" class="w-4 h-4"></i></button>
+          <button class="p-1.5 rounded-full hover:bg-zinc-100 text-zinc-500" title="Assignees"><i data-lucide="users" class="w-4 h-4"></i></button>
           <div class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-[11px] font-medium">
             <i data-lucide="clock" class="w-3 h-3 text-zinc-500"></i>
             <span>Trial • 24/100 min left</span>
           </div>
-          <button class="p-1.5 rounded-full hover:bg-zinc-100 text-zinc-500" title="Model settings">
-            <i data-lucide="box" class="w-4 h-4"></i>
-          </button>
+          <button class="p-1.5 rounded-full hover:bg-zinc-100 text-zinc-500" title="Model settings"><i data-lucide="box" class="w-4 h-4"></i></button>
           <div class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-700 text-[11px] font-mono cursor-pointer hover:bg-zinc-200 transition-colors">
             <i data-lucide="git-branch" class="w-3 h-3 text-zinc-500"></i>
             <span>main</span>
@@ -212,9 +291,7 @@
         </div>
 
         <div class="flex items-center gap-2">
-          <button class="p-1.5 rounded-full hover:bg-zinc-100 text-zinc-400" title="Voice input">
-            <i data-lucide="mic" class="w-4 h-4"></i>
-          </button>
+          <button class="p-1.5 rounded-full hover:bg-zinc-100 text-zinc-400" title="Voice input"><i data-lucide="mic" class="w-4 h-4"></i></button>
           <button id="btnExecutePrompt" class="w-8 h-8 rounded-full bg-zinc-900 hover:bg-zinc-800 text-white flex items-center justify-center transition-transform hover:scale-105 shadow-sm" title="Send">
             <i data-lucide="arrow-up" class="w-4 h-4"></i>
           </button>
@@ -226,87 +303,51 @@
     <div class="flex items-center gap-2 text-xs text-zinc-500 mb-6">
       <span>Start with</span>
       <button onclick="setPrompt('Review Linear issue fixes in current branch')" class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-700 shadow-2xs transition-colors">
-        <i data-lucide="layers" class="w-3 h-3 text-purple-500"></i>
-        <span>Linear issue</span>
+        <i data-lucide="layers" class="w-3 h-3 text-purple-500"></i><span>Linear issue</span>
       </button>
       <button onclick="setPrompt('Review Jira issue changes and verify edge cases')" class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-700 shadow-2xs transition-colors">
-        <i data-lucide="git-pull-request" class="w-3 h-3 text-blue-500"></i>
-        <span>Jira issue</span>
+        <i data-lucide="git-pull-request" class="w-3 h-3 text-blue-500"></i><span>Jira issue</span>
       </button>
       <button onclick="setPrompt('Review according to company Matt Pocock skills rules')" class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-700 shadow-2xs transition-colors">
-        <i data-lucide="zap" class="w-3 h-3 text-amber-500"></i>
-        <span>Skill</span>
+        <i data-lucide="zap" class="w-3 h-3 text-amber-500"></i><span>Skill</span>
       </button>
     </div>
 
-    <!-- 宣传/提示横幅 (Give your agent a head start) -->
+    <!-- 引导横幅 -->
     <div class="w-full bg-[#f4f5f7] border border-zinc-200/80 rounded-xl p-3.5 flex items-center justify-between mb-8">
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg bg-zinc-200 flex items-center justify-center text-zinc-700">
-          <i data-lucide="zap" class="w-4 h-4"></i>
-        </div>
+        <div class="w-8 h-8 rounded-lg bg-zinc-200 flex items-center justify-center text-zinc-700"><i data-lucide="zap" class="w-4 h-4"></i></div>
         <div>
           <div class="font-semibold text-xs text-zinc-900">Give your agent a head start</div>
           <div class="text-[11px] text-zinc-500">Add a skill with instructions you can use across tasks.</div>
         </div>
       </div>
-      <div class="flex items-center gap-3">
-        <button class="px-3 py-1 rounded-md bg-white border border-zinc-200 text-xs font-medium text-zinc-800 hover:bg-zinc-50 transition-colors shadow-2xs">
-          Add a skill
-        </button>
-        <button class="text-zinc-400 hover:text-zinc-600"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
-      </div>
+      <button class="px-3 py-1 rounded-md bg-white border border-zinc-200 text-xs font-medium text-zinc-800 hover:bg-zinc-50 shadow-2xs">Add a skill</button>
     </div>
 
-    <!-- 任务分类筛选栏 (Needs attention / Working / Completed / Failed) -->
+    <!-- 状态筛选 -->
     <div class="w-full flex items-center justify-between border-b border-zinc-200 pb-3 mb-4">
       <div class="flex items-center gap-5 text-xs font-medium">
-        <button class="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-800 pb-1">
-          <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-500"></i>
-          <span>Needs attention</span>
-        </button>
-        <button class="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-800 pb-1">
-          <i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-blue-500"></i>
-          <span>Working</span>
-        </button>
-        <button class="flex items-center gap-1.5 text-zinc-900 border-b-2 border-zinc-900 pb-1">
-          <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500"></i>
-          <span>Completed</span>
-        </button>
-        <button class="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-800 pb-1">
-          <i data-lucide="x-circle" class="w-3.5 h-3.5 text-red-500"></i>
-          <span>Failed</span>
-        </button>
+        <button class="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-800 pb-1"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-500"></i><span>Needs attention</span></button>
+        <button class="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-800 pb-1"><i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-blue-500"></i><span>Working</span></button>
+        <button class="flex items-center gap-1.5 text-zinc-900 border-b-2 border-zinc-900 pb-1"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-500"></i><span>Completed</span></button>
+        <button class="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-800 pb-1"><i data-lucide="x-circle" class="w-3.5 h-3.5 text-red-500"></i><span>Failed</span></button>
       </div>
-
       <div class="flex items-center gap-2 text-xs text-zinc-500">
-        <button class="flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-zinc-200 hover:bg-zinc-50">
-          <i data-lucide="folder" class="w-3 h-3 text-zinc-400"></i>
-          <span>All repositories</span>
-        </button>
-        <button class="flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-zinc-200 hover:bg-zinc-50">
-          <i data-lucide="sliders-horizontal" class="w-3 h-3 text-zinc-400"></i>
-          <span>Filter</span>
-          <span class="w-4 h-4 rounded-full bg-zinc-100 text-[10px] flex items-center justify-center font-bold">2</span>
-        </button>
+        <button onclick="switchToReposView()" class="flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-zinc-200 hover:bg-zinc-50"><i data-lucide="folder" class="w-3 h-3 text-zinc-400"></i><span>All repositories</span></button>
+        <button class="flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-zinc-200 hover:bg-zinc-50"><i data-lucide="sliders-horizontal" class="w-3 h-3 text-zinc-400"></i><span>Filter</span><span class="w-4 h-4 rounded-full bg-zinc-100 text-[10px] flex items-center justify-center font-bold">2</span></button>
       </div>
     </div>
 
-    <!-- 任务卡片流 (Task Cards) -->
-    <div id="tasksCardStream" class="w-full space-y-2.5">
-      <!-- 动态加载卡片，点击任意卡片无缝打开第 3 张图详情视图 -->
-    </div>
-
+    <!-- 任务卡片流 -->
+    <div id="tasksCardStream" class="w-full space-y-2.5"></div>
   </main>
 
 
-  <!-- VIEW B: Task Execution Workspace (1:1 像素级复刻第 3 张截图！) -->
+  <!-- VIEW 2: Task Execution Workspace (第 3 张截图) -->
   <div id="viewTaskDetail" class="view-content hidden flex-1 flex flex-row h-screen overflow-hidden">
-    
-    <!-- 中间：Agent 工作流与交互时间线 -->
+    <!-- 中间：Agent 工作流 -->
     <div class="flex-1 flex flex-col h-screen overflow-y-auto border-r border-[#eaecf0] bg-white">
-      
-      <!-- 顶部任务标题栏 -->
       <div class="px-6 py-3.5 border-b border-[#eaecf0] flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur z-20">
         <div class="flex items-center gap-2.5">
           <i data-lucide="folder" class="w-4 h-4 text-zinc-500"></i>
@@ -315,21 +356,15 @@
           <button class="p-1 rounded hover:bg-zinc-100 text-zinc-400"><i data-lucide="git-branch" class="w-3.5 h-3.5"></i></button>
           <button class="p-1 rounded hover:bg-zinc-100 text-zinc-400"><i data-lucide="more-horizontal" class="w-3.5 h-3.5"></i></button>
         </div>
-        <button class="p-1.5 rounded hover:bg-zinc-100 text-zinc-400">
-          <i data-lucide="bell" class="w-4 h-4"></i>
-        </button>
+        <button class="p-1.5 rounded hover:bg-zinc-100 text-zinc-400"><i data-lucide="bell" class="w-4 h-4"></i></button>
       </div>
 
-      <!-- 时间线主体内容 -->
       <div class="p-8 space-y-6 max-w-3xl mx-auto w-full flex-1">
-        
-        <!-- 耗时折叠指示器 (Worked for 10m 40s) -->
         <div class="flex items-center gap-1.5 text-xs text-zinc-500 cursor-pointer hover:text-zinc-800">
           <span id="detailWorkedTime" class="font-medium">Worked for 10m 40s</span>
           <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
         </div>
 
-        <!-- Agent 执行汇报正文气泡 (对标截图中文内容) -->
         <div class="space-y-3 text-xs text-zinc-800 leading-relaxed">
           <div class="flex items-center gap-1.5 text-zinc-700">
             <span>已完成并推送到任务分支，提交：</span>
@@ -339,22 +374,16 @@
             </span>
           </div>
 
-          <!-- Bullet Points 成果清单 -->
-          <ul id="detailBulletPoints" class="space-y-2 list-disc pl-5 text-zinc-700 font-normal">
-            <!-- 动态填充 -->
-          </ul>
-
-          <!-- 风险与覆盖说明 -->
+          <ul id="detailBulletPoints" class="space-y-2 list-disc pl-5 text-zinc-700 font-normal"></ul>
           <p id="detailRiskNote" class="text-zinc-500 text-[11px] pt-1 leading-normal"></p>
 
-          <!-- 气泡底部时间戳与操作 -->
           <div class="flex items-center gap-2 pt-2 text-[11px] text-zinc-400">
             <span id="detailTimestamp">1 day ago</span>
             <button onclick="copyDetailSummary()" class="hover:text-zinc-600"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
           </div>
         </div>
 
-        <!-- Edited Files 文件增删统计卡片 (1:1 对标截图中部的 Edited 9 files +491 -14) -->
+        <!-- Edited Files 卡片 -->
         <div class="border border-zinc-200 rounded-xl bg-white shadow-2xs overflow-hidden">
           <div class="px-4 py-3 bg-[#fafafa] border-b border-zinc-200 flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -367,22 +396,16 @@
             </div>
             <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400"></i>
           </div>
-
-          <div id="detailFilesList" class="divide-y divide-zinc-100 text-xs font-mono">
-            <!-- 动态生成各文件与增删行号 -->
-          </div>
+          <div id="detailFilesList" class="divide-y divide-zinc-100 text-xs font-mono"></div>
         </div>
 
-        <!-- 聊天对话交互流 (支持多轮追问) -->
         <div id="detailChatStream" class="space-y-3 pt-2"></div>
-
       </div>
 
-      <!-- 底部常驻交互输入框 (对应截图底部的输入框) -->
+      <!-- 底部输入框 -->
       <div class="p-4 border-t border-[#eaecf0] bg-white sticky bottom-0 z-20">
         <div class="max-w-3xl mx-auto w-full bg-[#f8f9fa] border border-zinc-300/80 rounded-2xl p-3 shadow-2xs flex flex-col gap-2">
           <input type="text" id="followUpChatInput" placeholder="Ask a question or request changes..." class="w-full bg-transparent text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none">
-          
           <div class="flex items-center justify-between pt-1 text-[11px] text-zinc-400">
             <div class="flex items-center gap-2">
               <button class="p-1 rounded hover:bg-zinc-200 text-zinc-500"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
@@ -391,12 +414,8 @@
                 <span>Trial • 24/100 min left</span>
               </span>
             </div>
-
             <div class="flex items-center gap-2">
-              <span class="flex items-center gap-1 text-zinc-500">
-                <i data-lucide="clock" class="w-3 h-3"></i>
-                <span>46 min</span>
-              </span>
+              <span class="flex items-center gap-1 text-zinc-500"><i data-lucide="clock" class="w-3 h-3"></i><span>46 min</span></span>
               <button class="p-1 rounded hover:bg-zinc-200 text-zinc-400"><i data-lucide="mic" class="w-3.5 h-3.5"></i></button>
               <button id="btnSendFollowUp" class="w-7 h-7 rounded-full bg-zinc-900 text-white flex items-center justify-center hover:bg-zinc-800 transition-transform hover:scale-105">
                 <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i>
@@ -405,21 +424,16 @@
           </div>
         </div>
       </div>
-
     </div>
 
-    <!-- 右侧：上下文属性与操作控制面板 (Changes & Actions Panel - 1:1 对标右栏) -->
+    <!-- 右侧 Actions 面板 -->
     <aside class="w-80 bg-white p-5 flex flex-col justify-between shrink-0 h-screen overflow-y-auto select-none space-y-6">
-      
       <div class="space-y-6">
-        
-        <!-- Changes 区域 -->
         <div class="space-y-3">
           <div class="text-xs font-semibold text-zinc-900 flex items-center gap-1.5">
             <i data-lucide="git-branch" class="w-3.5 h-3.5 text-zinc-500"></i>
             <span>Changes</span>
           </div>
-
           <div class="bg-[#f8f9fa] border border-zinc-200 rounded-lg p-2.5 flex items-center justify-between text-xs font-mono">
             <div class="flex items-center gap-1.5 truncate text-zinc-700">
               <i data-lucide="git-branch" class="w-3.5 h-3.5 text-zinc-400 shrink-0"></i>
@@ -427,88 +441,118 @@
             </div>
             <button onclick="copyBranchName()" class="text-zinc-400 hover:text-zinc-600"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
           </div>
-
           <div class="flex items-center gap-1.5 text-[11px] text-zinc-500 pl-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             <span>Pushed • <span id="detailRightCommit" class="font-mono">48e07c2</span></span>
           </div>
-
-          <!-- Create PR 大按钮 (核心行动入口) -->
           <button id="btnRightCreatePR" class="w-full py-2 px-3 rounded-lg border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-800 transition-colors shadow-2xs flex items-center justify-center gap-1.5">
             <i data-lucide="git-pull-request" class="w-3.5 h-3.5 text-zinc-600"></i>
             <span>Create PR</span>
           </button>
         </div>
 
-        <!-- Actions 开关控制 -->
         <div class="space-y-3 pt-2 border-t border-zinc-100">
           <div class="text-xs font-semibold text-zinc-900">Actions</div>
-          
           <div class="flex items-center justify-between text-xs py-1">
-            <div class="flex items-center gap-2 text-zinc-700">
-              <i data-lucide="sparkles" class="w-4 h-4 text-zinc-400"></i>
-              <span>Autofix</span>
-            </div>
-            <!-- 开关 Switch -->
+            <div class="flex items-center gap-2 text-zinc-700"><i data-lucide="sparkles" class="w-4 h-4 text-zinc-400"></i><span>Autofix</span></div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" id="toggleAutofix" class="sr-only peer">
               <div class="w-9 h-5 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
             </label>
           </div>
-
           <div class="flex items-center justify-between text-xs py-1">
-            <div class="flex items-center gap-2 text-zinc-700">
-              <i data-lucide="terminal" class="w-4 h-4 text-zinc-400"></i>
-              <span>Run CLI review</span>
-            </div>
+            <div class="flex items-center gap-2 text-zinc-700"><i data-lucide="terminal" class="w-4 h-4 text-zinc-400"></i><span>Run CLI review</span></div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" id="toggleCliReview" class="sr-only peer">
               <div class="w-9 h-5 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
             </label>
           </div>
-
           <button onclick="previewRawDiffModal()" class="w-full flex items-center justify-between text-xs text-zinc-700 py-1.5 hover:text-zinc-900">
-            <div class="flex items-center gap-2">
-              <i data-lucide="eye" class="w-4 h-4 text-zinc-400"></i>
-              <span>Preview</span>
-            </div>
-            <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-zinc-400"></i>
-          </button>
-
-          <button onclick="alert('更多高级能力：Mermaid 导出、单元测试覆盖率报告分析已就绪。')" class="w-full flex items-center justify-between text-xs text-zinc-700 py-1.5 hover:text-zinc-900">
-            <div class="flex items-center gap-2">
-              <i data-lucide="more-horizontal" class="w-4 h-4 text-zinc-400"></i>
-              <span>... More</span>
-            </div>
+            <div class="flex items-center gap-2"><i data-lucide="eye" class="w-4 h-4 text-zinc-400"></i><span>Preview</span></div>
             <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-zinc-400"></i>
           </button>
         </div>
-
       </div>
 
-      <!-- 底部 Skills 引导卡片 (对应截图右下角卡片) -->
       <div class="bg-[#f8f9fa] border border-zinc-200 rounded-xl p-4 space-y-2.5">
         <div class="flex items-center justify-between">
           <span class="font-semibold text-xs text-zinc-900">Add skills to your coding tasks</span>
           <button class="text-zinc-400 hover:text-zinc-600"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
         </div>
-        <p class="text-[11px] text-zinc-500 leading-normal">
-          Save reusable instructions in your skill library to use them in future tasks.
-        </p>
+        <p class="text-[11px] text-zinc-500 leading-normal">Save reusable instructions in your skill library to use them in future tasks.</p>
         <div class="pt-1 flex items-center justify-between">
-          <button onclick="alert('已挂载企业 Matt Pocock 技能规范！')" class="px-3 py-1 rounded-md bg-white border border-zinc-200 text-xs font-medium text-zinc-800 hover:bg-zinc-50 shadow-2xs">
-            Explore skills
-          </button>
+          <button class="px-3 py-1 rounded-md bg-white border border-zinc-200 text-xs font-medium text-zinc-800 hover:bg-zinc-50 shadow-2xs">Explore skills</button>
           <span class="text-[10px] text-zinc-400">&lt; 2/2 &gt;</span>
         </div>
       </div>
-
     </aside>
-
   </div>
 
 
-  <!-- VIEW C: Analytics (对标第 2 张截图) -->
+  <!-- VIEW 3: Connected Repositories 仓库管理 (1:1 像素级复刻第 4 张截图！) -->
+  <main id="viewConnectedRepos" class="view-content hidden flex-1 p-8 max-w-5xl mx-auto w-full overflow-y-auto h-screen">
+    
+    <!-- 头部栏 (Screenshot 4: 左侧标题，右侧两个纯文本按钮) -->
+    <div class="flex items-center justify-between mb-8 pb-3 border-b border-zinc-100/60">
+      <h1 class="text-xl font-semibold text-zinc-900 tracking-tight">Connected repositories</h1>
+
+      <div class="flex items-center gap-2">
+        <button onclick="syncRepositories()" class="px-3.5 py-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-700 shadow-2xs transition-colors">
+          Sync Repositories
+        </button>
+        <button onclick="openAddRepoModal()" class="px-3.5 py-1.5 rounded-md bg-[#18181b] hover:bg-zinc-800 text-xs font-medium text-white shadow-2xs transition-colors">
+          Add Repositories
+        </button>
+      </div>
+    </div>
+
+    <!-- 描述与搜索栏 -->
+    <div class="space-y-3">
+      <div class="text-xs text-zinc-600 font-normal">
+        Manage the repositories CodeRabbit can access.
+      </div>
+
+      <div class="flex items-center justify-between">
+        <div class="relative w-80">
+          <i data-lucide="search" class="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-2.5"></i>
+          <input type="text" id="repoSearchInput" oninput="filterReposTable()" placeholder="Search repositories..." class="w-full bg-white border border-zinc-200 focus:border-zinc-400 rounded-lg pl-9 pr-3 py-1.5 text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none shadow-2xs transition-colors">
+        </div>
+
+        <button class="px-3 py-1.5 rounded-lg bg-white border border-zinc-200 text-xs font-medium text-zinc-700 flex items-center gap-1.5 shadow-2xs hover:bg-zinc-50 transition-colors">
+          <span>Name</span>
+          <i data-lucide="chevrons-up-down" class="w-3.5 h-3.5 text-zinc-400"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- 仓库列表表格 (完全对标截图: 灰顶卡片, acl, AICodeReview Public, apicore Public, ngx Public) -->
+    <div class="bg-white border border-zinc-200 rounded-lg overflow-hidden shadow-2xs mt-3">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-[#f0f1f3] border-b border-zinc-200 text-zinc-700 font-medium">
+          <tr>
+            <th class="py-2.5 px-4 font-semibold text-zinc-700 text-xs">Repository</th>
+            <th class="py-2.5 px-4 text-right"></th>
+          </tr>
+        </thead>
+        <tbody id="reposTableBody" class="divide-y divide-zinc-100 text-zinc-800 font-normal">
+          <!-- 动态从后端 /api/repositories 加载 -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 底部每页条数指示器 (Screenshot 4: 25 ↕ per page) -->
+    <div class="flex justify-end mt-3 text-xs text-zinc-500">
+      <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-zinc-200 shadow-2xs">
+        <span>25</span>
+        <i data-lucide="chevrons-up-down" class="w-3 h-3 text-zinc-400"></i>
+        <span>per page</span>
+      </div>
+    </div>
+
+  </main>
+
+
+  <!-- VIEW 4: Analytics (第 2 张截图) -->
   <main id="viewAnalytics" class="view-content hidden flex-1 p-8 max-w-6xl mx-auto w-full overflow-y-auto h-screen">
     <div class="flex items-center justify-between mb-4">
       <h1 class="text-2xl font-bold text-zinc-900 tracking-tight">Summary</h1>
@@ -529,7 +573,7 @@
         <span class="text-zinc-400">Sep 12, 00:00 - Oct 11, 23:59</span>
       </div>
       <div class="flex items-center gap-2 text-xs">
-        <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 shadow-2xs font-medium">
+        <button onclick="switchToReposView()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 shadow-2xs font-medium">
           <i data-lucide="plus" class="w-3 h-3 text-zinc-400"></i><span>Repositories</span>
         </button>
         <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 shadow-2xs font-medium">
@@ -546,7 +590,7 @@
       <div class="bg-white border border-zinc-200 rounded-xl p-5 shadow-2xs">
         <div class="font-semibold text-xs text-zinc-900">Active Repositories</div>
         <div class="text-[11px] text-zinc-400 mt-0.5">Total repositories with CodeRabbit installed that had review activity.</div>
-        <div class="text-3xl font-bold text-zinc-900 mt-6 text-center">2</div>
+        <div id="metricActiveRepos" class="text-3xl font-bold text-zinc-900 mt-6 text-center">4</div>
       </div>
       <div class="bg-white border border-zinc-200 rounded-xl p-5 shadow-2xs">
         <div class="font-semibold text-xs text-zinc-900">Merged Pull Requests</div>
@@ -589,23 +633,125 @@
   </main>
 
 
-  <!-- VIEW D: Settings -->
-  <main id="viewSettings" class="view-content hidden flex-1 p-8 max-w-4xl mx-auto w-full space-y-6">
-    <h1 class="text-2xl font-bold text-zinc-900 tracking-tight">Settings & Engine Configuration</h1>
-    <div class="bg-white border border-zinc-200 rounded-xl p-6 space-y-4 shadow-2xs">
-      <h3 class="font-semibold text-sm text-zinc-900">LLM Provider Configuration</h3>
-      <div class="space-y-3">
+  <!-- Modal 1: Add Repositories 弹窗 -->
+  <div id="addRepoModal" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-zinc-200 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-zinc-100 pb-3">
+        <h3 class="font-semibold text-sm text-zinc-900 flex items-center gap-2">
+          <i data-lucide="plus-circle" class="w-4 h-4 text-orange-500"></i>
+          Add Repositories
+        </h3>
+        <button onclick="closeAddRepoModal()" class="text-zinc-400 hover:text-zinc-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+
+      <!-- 选项卡切换 -->
+      <div class="flex border-b border-zinc-200 text-xs">
+        <button id="tabBtnLocal" onclick="switchAddRepoTab('local')" class="px-4 py-2 font-medium border-b-2 border-zinc-900 text-zinc-900">本地 Git 仓库</button>
+        <button id="tabBtnGithub" onclick="switchAddRepoTab('github')" class="px-4 py-2 font-medium text-zinc-500 hover:text-zinc-700">GitHub 远程仓库</button>
+      </div>
+
+      <!-- Tab 1: 本地 Git 仓库 -->
+      <div id="tabContentLocal" class="space-y-3 pt-1">
+        <p class="text-[11px] text-zinc-500">指定本地工作副本路径，无须 GitHub App 即可直接在 Web 控制台或 CLI 进行实时审查。</p>
         <div>
-          <label class="text-xs text-zinc-500 block mb-1">Model Engine</label>
-          <input type="text" value="deepseek-chat" readonly class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-700 font-mono">
+          <label class="text-xs font-medium text-zinc-700 block mb-1">Repository Name</label>
+          <input type="text" id="newRepoNameInput" placeholder="e.g. acl 或 my-project" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-zinc-400">
         </div>
+
         <div>
-          <label class="text-xs text-zinc-500 block mb-1">DeepSeek API Key (Protected)</label>
-          <input type="password" value="sk-fc618355031242a69ece7ad43f1e40ec" readonly class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-700 font-mono">
+          <label class="text-xs font-medium text-zinc-700 block mb-1">Local Git Path</label>
+          <input type="text" id="newRepoPathInput" placeholder="C:\Users\admin\source\repos\my-project" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-zinc-400">
+        </div>
+
+        <div>
+          <label class="text-xs font-medium text-zinc-700 block mb-1">Visibility</label>
+          <select id="newRepoVisibilityInput" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none">
+            <option value="Public">Public</option>
+            <option value="Private">Private</option>
+          </select>
         </div>
       </div>
+
+      <!-- Tab 2: GitHub 远程仓库 -->
+      <div id="tabContentGithub" class="space-y-3 pt-1 hidden">
+        <div class="bg-blue-50/60 border border-blue-200/80 rounded-xl p-3 text-xs text-blue-900 space-y-1">
+          <div class="font-semibold flex items-center gap-1.5"><i data-lucide="github" class="w-4 h-4"></i><span>GitHub App 自动化接入</span></div>
+          <p class="text-[11px] text-blue-700 leading-normal">通过已配置的 GitHub App 自动监听 Pull Request 并发表审查批注。点击下方按钮可直接前往 GitHub 授权更多仓库：</p>
+          <a href="https://github.com/apps/aicode-review" target="_blank" class="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline pt-1">
+            <span>前往 GitHub 安装/更新授权</span> <i data-lucide="external-link" class="w-3 h-3"></i>
+          </a>
+        </div>
+
+        <div>
+          <label class="text-xs font-medium text-zinc-700 block mb-1">GitHub 仓库名称 (owner/repo)</label>
+          <input type="text" id="newGithubRepoInput" placeholder="e.g. Cosmohuang1/AICodeReview" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-zinc-400">
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
+        <button onclick="closeAddRepoModal()" class="px-3.5 py-1.5 rounded-lg border border-zinc-200 text-xs font-medium text-zinc-600 hover:bg-zinc-50">Cancel</button>
+        <button onclick="submitAddRepository()" class="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold text-white shadow-sm">Connect Repository</button>
+      </div>
     </div>
-  </main>
+  </div>
+
+
+  <!-- Modal 2: Repo Review Settings 弹窗 -->
+  <div id="repoSettingsModal" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-zinc-200 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-zinc-100 pb-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="settings" class="w-4 h-4 text-orange-500"></i>
+          <span class="font-semibold text-sm text-zinc-900" id="repoSettingsTitle">Review settings: acl</span>
+        </div>
+        <button onclick="closeRepoSettingsModal()" class="text-zinc-400 hover:text-zinc-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+
+      <div class="space-y-4 text-xs max-h-[70vh] overflow-y-auto pr-1">
+        <div class="bg-[#f8f9fa] border border-zinc-200 rounded-xl p-3.5 space-y-2.5">
+          <div class="font-semibold text-zinc-900">Review Automation</div>
+          <label class="flex items-center gap-2 text-zinc-700 cursor-pointer">
+            <input type="checkbox" id="settingAutoReviewPR" checked class="rounded border-zinc-300 text-orange-500 focus:ring-0">
+            <span>Automatically review Pull Requests on opened & synchronize</span>
+          </label>
+          <label class="flex items-center gap-2 text-zinc-700 cursor-pointer">
+            <input type="checkbox" id="settingSelfCritique" checked class="rounded border-zinc-300 text-orange-500 focus:ring-0">
+            <span>Enable Self-Critique second-stage noise filter (降低误报率)</span>
+          </label>
+          <label class="flex items-center gap-2 text-zinc-700 cursor-pointer">
+            <input type="checkbox" id="settingGenerateSummary" checked class="rounded border-zinc-300 text-orange-500 focus:ring-0">
+            <span>Generate High-level Summary & Walkthrough (生成变更架构走查)</span>
+          </label>
+        </div>
+
+        <div>
+          <label class="font-semibold text-zinc-900 block mb-1">Review Profile (审查严格度)</label>
+          <select id="settingProfile" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none">
+            <option value="Chill">Chill (温和宽松，仅指出重大安全与逻辑 Bug)</option>
+            <option value="Assertive" selected>Assertive (推荐：全面分析性能、风格与测试边界)</option>
+            <option value="Strict">Strict (极致严苛：严格执行全套规范与单元测试覆盖率)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="font-semibold text-zinc-900 block mb-1">Excluded Paths (排除路径，逗号分隔)</label>
+          <input type="text" id="settingExcludedPaths" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 font-mono focus:outline-none">
+        </div>
+
+        <div>
+          <label class="font-semibold text-zinc-900 block mb-1">Enterprise Rules & Instructions (.ai-review.yml)</label>
+          <p class="text-[11px] text-zinc-400 mb-1">每行一条规则，AI 审查时将逐条强制校验：</p>
+          <textarea id="settingRules" rows="5" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg p-2.5 font-mono text-[11px] text-zinc-800 focus:outline-none"></textarea>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-zinc-100">
+        <button onclick="closeRepoSettingsModal()" class="px-3.5 py-1.5 rounded-lg border border-zinc-200 text-xs font-medium text-zinc-600 hover:bg-zinc-50">Cancel</button>
+        <button onclick="saveRepoSettings()" class="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium shadow-sm">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Diff 弹窗 -->
   <div id="diffModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs hidden flex items-center justify-center p-4">
@@ -622,11 +768,37 @@
   <script>
     let currentTask = null;
     let tasksList = [];
+    let repositories = [];
 
     async function init() {
       lucide.createIcons();
       bindNavigation();
       await loadTasks();
+      await loadRepositories();
+
+      window.addEventListener('hashchange', handleHashChange);
+      if (window.location.hash) {
+        handleHashChange();
+      }
+    }
+
+    function handleHashChange() {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === '#repos' || hash === '#settings') {
+        document.getElementById('sidebarWorkspaceMenu').classList.add('hidden');
+        document.getElementById('sidebarSettingsMenu').classList.remove('hidden');
+        showView('repos');
+      } else if (hash === '#analytics') {
+        document.getElementById('sidebarSettingsMenu').classList.add('hidden');
+        document.getElementById('sidebarWorkspaceMenu').classList.remove('hidden');
+        showView('analytics');
+      } else if (hash === '#task-detail') {
+        showView('task-detail');
+      } else {
+        document.getElementById('sidebarSettingsMenu').classList.add('hidden');
+        document.getElementById('sidebarWorkspaceMenu').classList.remove('hidden');
+        showView('workspace');
+      }
     }
 
     function bindNavigation() {
@@ -635,20 +807,18 @@
           const view = item.getAttribute('data-view');
           if (!view) return;
 
-          // 切换导航高亮
           document.querySelectorAll('.nav-item').forEach(el => {
             el.classList.remove('bg-[#e9ecef]', 'font-semibold', 'text-zinc-900');
             el.classList.add('text-zinc-600');
-            const ind = el.querySelector('.active-indicator');
-            if (ind) ind.classList.add('hidden');
           });
           item.classList.add('bg-[#e9ecef]', 'font-semibold', 'text-zinc-900');
           item.classList.remove('text-zinc-600');
-          const ind = item.querySelector('.active-indicator');
-          if (ind) ind.classList.remove('hidden');
 
-          // 切换主体视图
-          showView(view);
+          if (view === 'repos') {
+            switchToReposView();
+          } else {
+            showView(view);
+          }
         });
       });
     }
@@ -662,12 +832,26 @@
         document.getElementById('viewTaskDetail').classList.remove('hidden');
       } else if (viewId === 'analytics') {
         document.getElementById('viewAnalytics').classList.remove('hidden');
-      } else if (viewId === 'settings') {
-        document.getElementById('viewSettings').classList.remove('hidden');
+      } else if (viewId === 'repos') {
+        document.getElementById('viewConnectedRepos').classList.remove('hidden');
       } else {
         document.getElementById('viewWorkspace').classList.remove('hidden');
       }
       lucide.createIcons();
+    }
+
+    function switchToReposView() {
+      window.location.hash = '#repos';
+      document.getElementById('sidebarWorkspaceMenu').classList.add('hidden');
+      document.getElementById('sidebarSettingsMenu').classList.remove('hidden');
+      showView('repos');
+    }
+
+    function switchToWorkspaceView() {
+      window.location.hash = '#workspace';
+      document.getElementById('sidebarSettingsMenu').classList.add('hidden');
+      document.getElementById('sidebarWorkspaceMenu').classList.remove('hidden');
+      showView('workspace');
     }
 
     function toggleAnalytics() {
@@ -677,6 +861,182 @@
       chev.classList.toggle('rotate-180');
     }
 
+    // 仓库管理逻辑 (第 4 张截图)
+    async function loadRepositories() {
+      try {
+        const res = await fetch('/api/repositories');
+        repositories = await res.json();
+        renderReposTable(repositories);
+      } catch (err) {
+        console.error('Failed to load repositories:', err);
+      }
+    }
+
+    let currentSettingsRepo = null;
+
+    function renderReposTable(repos) {
+      const tbody = document.getElementById('reposTableBody');
+      tbody.innerHTML = '';
+
+      repos.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-[#fafafa] transition-colors';
+        
+        const badgeHtml = r.visibility === 'Public' 
+          ? `<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[#f1f3f5] text-zinc-500 font-normal border border-zinc-200/80">Public</span>`
+          : '';
+
+        tr.innerHTML = `
+          <td class="py-3 px-4 font-normal text-zinc-900 flex items-center">
+            <span>${r.name}</span>
+            ${badgeHtml}
+          </td>
+          <td class="py-3 px-4 text-right">
+            <button onclick="openRepoSettings('${r.name}')" class="text-[#a14418] hover:text-[#78350f] font-medium inline-flex items-center gap-1.5 transition-colors">
+              <span>Review settings</span>
+              <span class="text-xs">→</span>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      lucide.createIcons();
+    }
+
+    function filterReposTable() {
+      const q = document.getElementById('repoSearchInput').value.toLowerCase().trim();
+      const filtered = repositories.filter(r => r.name.toLowerCase().includes(q));
+      renderReposTable(filtered);
+    }
+
+    async function syncRepositories() {
+      try {
+        const res = await fetch('/api/repositories/sync', { method: 'POST' });
+        const data = await res.json();
+        alert('🎉 ' + data.message);
+        await loadRepositories();
+      } catch (err) {
+        alert('同步失败: ' + err.message);
+      }
+    }
+
+    function switchAddRepoTab(tab) {
+      const btnLocal = document.getElementById('tabBtnLocal');
+      const btnGithub = document.getElementById('tabBtnGithub');
+      const contentLocal = document.getElementById('tabContentLocal');
+      const contentGithub = document.getElementById('tabContentGithub');
+
+      if (tab === 'local') {
+        btnLocal.className = 'px-4 py-2 font-medium border-b-2 border-zinc-900 text-zinc-900';
+        btnGithub.className = 'px-4 py-2 font-medium text-zinc-500 hover:text-zinc-700';
+        contentLocal.classList.remove('hidden');
+        contentGithub.classList.add('hidden');
+      } else {
+        btnGithub.className = 'px-4 py-2 font-medium border-b-2 border-zinc-900 text-zinc-900';
+        btnLocal.className = 'px-4 py-2 font-medium text-zinc-500 hover:text-zinc-700';
+        contentGithub.classList.remove('hidden');
+        contentLocal.classList.add('hidden');
+      }
+      lucide.createIcons();
+    }
+
+    function openAddRepoModal() {
+      document.getElementById('addRepoModal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeAddRepoModal() {
+      document.getElementById('addRepoModal').classList.add('hidden');
+    }
+
+    async function submitAddRepository() {
+      const isGithub = !document.getElementById('tabContentGithub').classList.contains('hidden');
+      let name, pathVal, vis;
+
+      if (isGithub) {
+        const slug = document.getElementById('newGithubRepoInput').value.trim();
+        if (!slug) return alert('请输入 GitHub 仓库名称 (如 owner/repo)！');
+        name = slug.split('/').pop() || slug;
+        pathVal = `https://github.com/${slug}.git`;
+        vis = 'Public';
+      } else {
+        name = document.getElementById('newRepoNameInput').value.trim();
+        pathVal = document.getElementById('newRepoPathInput').value.trim();
+        vis = document.getElementById('newRepoVisibilityInput').value;
+        if (!name) return alert('请输入仓库名称！');
+      }
+
+      try {
+        const res = await fetch('/api/repositories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, path: pathVal, visibility: vis }),
+        });
+        const data = await res.json();
+        if (data.error) return alert(data.error);
+
+        closeAddRepoModal();
+        document.getElementById('newRepoNameInput').value = '';
+        document.getElementById('newRepoPathInput').value = '';
+        if (document.getElementById('newGithubRepoInput')) document.getElementById('newGithubRepoInput').value = '';
+        await loadRepositories();
+        alert(`成功添加仓库: ${name}！`);
+      } catch (err) {
+        alert('添加失败: ' + err.message);
+      }
+    }
+
+    async function openRepoSettings(repoName) {
+      currentSettingsRepo = repoName;
+      document.getElementById('repoSettingsTitle').textContent = `Review settings: ${repoName}`;
+
+      try {
+        const res = await fetch(`/api/repositories/${repoName}/settings`);
+        const data = await res.json();
+        const settings = data.settings || {};
+
+        document.getElementById('settingAutoReviewPR').checked = settings.autoReviewPR !== false;
+        document.getElementById('settingSelfCritique').checked = settings.selfCritique !== false;
+        document.getElementById('settingGenerateSummary').checked = settings.generateSummary !== false;
+        document.getElementById('settingProfile').value = settings.reviewProfile || 'Assertive';
+        document.getElementById('settingExcludedPaths').value = (settings.excludedPaths || []).join(', ');
+        document.getElementById('settingRules').value = (settings.rules || []).join('\n');
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+
+      document.getElementById('repoSettingsModal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeRepoSettingsModal() {
+      document.getElementById('repoSettingsModal').classList.add('hidden');
+    }
+
+    async function saveRepoSettings() {
+      if (!currentSettingsRepo) return;
+      const autoReviewPR = document.getElementById('settingAutoReviewPR').checked;
+      const selfCritique = document.getElementById('settingSelfCritique').checked;
+      const generateSummary = document.getElementById('settingGenerateSummary').checked;
+      const reviewProfile = document.getElementById('settingProfile').value;
+      const excludedPaths = document.getElementById('settingExcludedPaths').value.split(',').map(s => s.trim()).filter(Boolean);
+      const rules = document.getElementById('settingRules').value.split('\n').map(s => s.trim()).filter(Boolean);
+
+      try {
+        const res = await fetch(`/api/repositories/${currentSettingsRepo}/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autoReviewPR, selfCritique, generateSummary, reviewProfile, excludedPaths, rules })
+        });
+        const data = await res.json();
+        alert(`✅ ${data.message || 'Settings saved successfully!'}`);
+        closeRepoSettingsModal();
+      } catch (err) {
+        alert('保存设置失败: ' + err.message);
+      }
+    }
+
+    // 任务与工作流数据加载
     async function loadTasks() {
       try {
         const res = await fetch('/api/recents');
@@ -684,7 +1044,6 @@
         renderRecentsList(tasksList);
         renderStreamCards(tasksList);
 
-        // 默认将第一项作为当前详情任务
         if (tasksList.length > 0) {
           currentTask = tasksList[0];
           renderTaskDetail(currentTask);
@@ -694,11 +1053,10 @@
       }
     }
 
-    // 渲染侧边栏 Recents
     function renderRecentsList(tasks) {
       const el = document.getElementById('recentsList');
       el.innerHTML = '';
-      tasks.forEach((t, idx) => {
+      tasks.forEach((t) => {
         const a = document.createElement('a');
         a.href = 'javascript:void(0)';
         const isActive = currentTask && currentTask.id === t.id;
@@ -712,7 +1070,6 @@
       });
     }
 
-    // 渲染主工作台的任务卡片流
     function renderStreamCards(tasks) {
       const el = document.getElementById('tasksCardStream');
       el.innerHTML = '';
@@ -740,7 +1097,6 @@
       lucide.createIcons();
     }
 
-    // 选中并进入特定任务的 3 栏详情视图 (对标第 3 张截图)
     function selectTask(task) {
       currentTask = task;
       renderTaskDetail(task);
@@ -748,7 +1104,6 @@
       showView('task-detail');
     }
 
-    // 渲染 3 栏工作台详情
     function renderTaskDetail(task) {
       document.getElementById('detailTaskTitle').textContent = task.title;
       document.getElementById('detailWorkedTime').textContent = task.workedTime || 'Worked for 10m 40s';
@@ -758,7 +1113,6 @@
       document.getElementById('detailTimestamp').textContent = task.timestamp || '1 day ago';
       document.getElementById('detailRiskNote').textContent = task.agentSummary?.riskNote || '';
 
-      // 成果 bullet points
       const bpList = document.getElementById('detailBulletPoints');
       bpList.innerHTML = '';
       (task.agentSummary?.bulletPoints || []).forEach(pt => {
@@ -767,7 +1121,6 @@
         bpList.appendChild(li);
       });
 
-      // Edited Files 卡片
       const filesHeader = document.getElementById('detailEditedFilesHeader');
       filesHeader.textContent = `Edited ${(task.editedFiles || []).length} files`;
       document.getElementById('detailTotalAdditions').textContent = `+${task.totalAdditions || 491}`;
@@ -789,7 +1142,6 @@
         filesList.appendChild(row);
       });
 
-      // 渲染已有对话流
       renderChatStream(task.chatHistory || []);
       lucide.createIcons();
     }
@@ -810,7 +1162,6 @@
       });
     }
 
-    // 执行新任务
     document.getElementById('btnExecutePrompt').addEventListener('click', async () => {
       const prompt = document.getElementById('taskPromptInput').value.trim();
       const btn = document.getElementById('btnExecutePrompt');
@@ -833,9 +1184,7 @@
 
         document.getElementById('taskPromptInput').value = '';
         await loadTasks();
-        if (data.task) {
-          selectTask(data.task);
-        }
+        if (data.task) selectTask(data.task);
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
@@ -844,7 +1193,6 @@
       }
     });
 
-    // 多轮追问 Agent
     document.getElementById('btnSendFollowUp').addEventListener('click', async () => {
       const input = document.getElementById('followUpChatInput');
       const text = input.value.trim();
@@ -870,7 +1218,6 @@
       }
     });
 
-    // Create PR 大按钮
     document.getElementById('btnRightCreatePR').addEventListener('click', async () => {
       if (!currentTask) return;
       try {
@@ -882,7 +1229,7 @@
       }
     });
 
-    function previewRawDiffModal(filePath) {
+    function previewRawDiffModal() {
       const diffContent = currentTask?.rawDiff || '// 当前无 Diff 详细记录';
       document.getElementById('diffModalContent').textContent = diffContent;
       document.getElementById('diffModal').classList.remove('hidden');
@@ -908,11 +1255,6 @@
 
     function setPrompt(text) {
       document.getElementById('taskPromptInput').value = text;
-    }
-
-    function promptChangeRepo() {
-      const p = prompt('请输入本地 Git 仓库路径:', 'C:\\Users\\admin\\.gemini\antigravity\\scratch\\ai-review');
-      if (p) alert('已切换仓库: ' + p);
     }
 
     window.addEventListener('DOMContentLoaded', init);

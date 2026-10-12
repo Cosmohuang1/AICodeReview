@@ -244,7 +244,7 @@ apiRouter.get('/analytics', (_req: Request, res: Response) => {
   });
 
   res.json({
-    activeRepositories: 2,
+    activeRepositories: connectedRepos.length,
     mergedPullRequests: { total: 3, avgPerUser: 3 },
     activeUsers: { assigned: 1, unassigned: 0 },
     chatUsage: { sessions: 8, messages: 32 },
@@ -253,6 +253,99 @@ apiRouter.get('/analytics', (_req: Request, res: Response) => {
     codeRabbitComments: { posted: Math.max(18, totalComments), acceptanceRate: '92%' },
     severityCounts: { error: Math.max(2, errors), warning: Math.max(4, warnings), info: 2 },
   });
+});
+
+export interface ConnectedRepoItem {
+  id: string;
+  name: string;
+  visibility: 'Public' | 'Private';
+  path?: string;
+}
+
+const connectedRepos: ConnectedRepoItem[] = [
+  { id: 'repo_1', name: 'acl', visibility: 'Private', path: 'C:/Users/admin/source/repos/acl' },
+  { id: 'repo_2', name: 'AICodeReview', visibility: 'Public', path: process.cwd() },
+  { id: 'repo_3', name: 'apicore', visibility: 'Public', path: 'C:/Users/admin/source/repos/apicore' },
+  { id: 'repo_4', name: 'ngx', visibility: 'Public', path: 'C:/Users/admin/source/repos/ngx' }
+];
+
+apiRouter.get('/repositories', (_req: Request, res: Response) => {
+  res.json(connectedRepos);
+});
+
+export interface RepoSettings {
+  autoReviewPR: boolean;
+  selfCritique: boolean;
+  generateSummary: boolean;
+  reviewProfile: 'Chill' | 'Assertive' | 'Strict';
+  excludedPaths: string[];
+  rules: string[];
+}
+
+const repoSettingsMap: Record<string, RepoSettings> = {
+  acl: {
+    autoReviewPR: true,
+    selfCritique: true,
+    generateSummary: true,
+    reviewProfile: 'Assertive',
+    excludedPaths: ['*.lock', 'dist/**', 'bin/**', 'obj/**'],
+    rules: [
+      '所有公共 API 函数必须有清晰注释',
+      '禁止在生产代码中使用临时调试输出，统一使用日志门面',
+      '数据库查询必须使用参数化查询，杜绝 SQL 拼接',
+      '所有异步操作必须有异常捕获或在调用链处理'
+    ]
+  },
+  AICodeReview: {
+    autoReviewPR: true,
+    selfCritique: true,
+    generateSummary: true,
+    reviewProfile: 'Assertive',
+    excludedPaths: ['*.lock', 'dist/**', 'coverage/**', 'node_modules/**'],
+    rules: [
+      '严格遵循 TypeScript 强类型定义，禁止使用 any',
+      '使用 Self-Critique 进行二阶审查过滤，压低误报率',
+      'PR 需生成结构化时序图与变更走查'
+    ]
+  }
+};
+
+apiRouter.get('/repositories/:id/settings', (req: Request, res: Response) => {
+  const repo = connectedRepos.find(r => r.id === req.params.id || r.name.toLowerCase() === req.params.id.toLowerCase());
+  const name = repo ? repo.name : req.params.id;
+  const settings = repoSettingsMap[name] || {
+    autoReviewPR: true,
+    selfCritique: true,
+    generateSummary: true,
+    reviewProfile: 'Assertive',
+    excludedPaths: ['*.lock', 'dist/**', 'node_modules/**'],
+    rules: ['遵循团队代码规范', '编写完善的单元测试覆盖']
+  };
+  res.json({ repoName: name, settings });
+});
+
+apiRouter.post('/repositories/:id/settings', (req: Request, res: Response) => {
+  const repo = connectedRepos.find(r => r.id === req.params.id || r.name.toLowerCase() === req.params.id.toLowerCase());
+  const name = repo ? repo.name : req.params.id;
+  repoSettingsMap[name] = req.body;
+  res.json({ success: true, message: `Repository ${name} review settings updated successfully!` });
+});
+
+apiRouter.post('/repositories', (req: Request, res: Response) => {
+  const { name, visibility = 'Public', path: repoPath = '' } = req.body;
+  if (!name) return res.status(400).json({ error: 'Repository name is required' });
+  const newRepo: ConnectedRepoItem = {
+    id: `repo_${Date.now()}`,
+    name,
+    visibility: visibility === 'Private' ? 'Private' : 'Public',
+    path: repoPath
+  };
+  connectedRepos.push(newRepo);
+  res.json({ success: true, repo: newRepo });
+});
+
+apiRouter.post('/repositories/sync', (_req: Request, res: Response) => {
+  res.json({ success: true, message: 'Repositories synchronized successfully', count: connectedRepos.length });
 });
 
 apiRouter.post('/diff', (req: Request, res: Response) => {
