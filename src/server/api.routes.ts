@@ -53,50 +53,55 @@ export interface TaskDetail {
 const tasksList: TaskDetail[] = [];
 
 function ensureInitialWorkspaceTask(): void {
-  if (tasksList.length === 0) {
-    try {
-      const status = gitService.getWorkspaceStatus(process.cwd());
-      const rawDiff = gitService.getUnifiedDiff(process.cwd());
+  try {
+    const status = gitService.getWorkspaceStatus(process.cwd());
+    const rawDiff = gitService.getUnifiedDiff(process.cwd());
 
-      const bulletPoints: string[] = [];
-      if (status.hasChanges) {
-        bulletPoints.push(`检测到本地当前工程存在 ${status.changedFiles.length} 个文件变动 (+${status.totalAdditions} -${status.totalDeletions})。`);
-        bulletPoints.push('真实 Git 工作副本就绪，可在工作台下达指令进行修改或启动 Review。');
-      } else {
-        bulletPoints.push('工作区干净，无未提交的代码修改。');
-        bulletPoints.push(`当前位于分支 ${status.currentBranch}，最新提交 ${status.lastCommit.hash || 'HEAD'}。`);
-      }
-
-      tasksList.push({
-        id: 'rev_current_workspace',
-        title: status.hasChanges ? 'Review the current changes' : 'Current workspace (clean)',
-        repo: status.repoName,
-        branch: status.currentBranch,
-        pushedCommit: status.lastCommit.hash || 'HEAD',
-        author: status.lastCommit.author || 'Cosmohuang1',
-        workedTime: '实时同步',
-        timestamp: '刚刚',
-        status: status.hasChanges ? 'changes_ready' : 'completed',
-        agentSummary: {
-          commit: status.lastCommit.hash || 'HEAD',
-          bulletPoints,
-          riskNote: '当前基于本机真实 Git 工作副本，无伪造数据',
-          regressionStatus: '本地环境就绪'
-        },
-        totalAdditions: status.totalAdditions,
-        totalDeletions: status.totalDeletions,
-        editedFiles: status.changedFiles.map(f => ({
-          path: f.path,
-          additions: f.additions,
-          deletions: f.deletions
-        })),
-        comments: [],
-        chatHistory: [],
-        rawDiff: rawDiff || '// No changes in current workspace'
-      });
-    } catch {
-      // ignore
+    const bulletPoints: string[] = [];
+    if (status.hasChanges) {
+      bulletPoints.push(`检测到本地当前工程存在 ${status.changedFiles.length} 个文件变动 (+${status.totalAdditions} -${status.totalDeletions})。`);
+      bulletPoints.push('真实 Git 工作副本就绪，可在工作台下达指令进行修改或启动 Review。');
+    } else {
+      bulletPoints.push('工作区干净，无未提交的代码修改。');
+      bulletPoints.push(`当前位于分支 ${status.currentBranch}，最新提交 ${status.lastCommit.hash || 'HEAD'}: ${status.lastCommit.message || ''}`);
     }
+
+    const workspaceTask: TaskDetail = {
+      id: 'rev_current_workspace',
+      title: status.hasChanges ? 'Review the current changes' : 'Current workspace (clean)',
+      repo: status.repoName,
+      branch: status.currentBranch,
+      pushedCommit: status.lastCommit.hash || 'HEAD',
+      author: status.lastCommit.author || 'huangyihao',
+      workedTime: '实时同步',
+      timestamp: status.lastCommit.timeAgo || '刚刚',
+      status: status.hasChanges ? 'changes_ready' : 'completed',
+      agentSummary: {
+        commit: status.lastCommit.hash || 'HEAD',
+        bulletPoints,
+        riskNote: '当前基于本机真实 Git 工作副本，无伪造数据',
+        regressionStatus: '本地环境就绪'
+      },
+      totalAdditions: status.totalAdditions,
+      totalDeletions: status.totalDeletions,
+      editedFiles: status.changedFiles.map(f => ({
+        path: f.path,
+        additions: f.additions,
+        deletions: f.deletions
+      })),
+      comments: [],
+      chatHistory: [],
+      rawDiff: rawDiff || '// No changes in current workspace'
+    };
+
+    const idx = tasksList.findIndex(t => t.id === 'rev_current_workspace');
+    if (idx >= 0) {
+      tasksList[idx] = workspaceTask;
+    } else {
+      tasksList.push(workspaceTask);
+    }
+  } catch {
+    // ignore
   }
 }
 
