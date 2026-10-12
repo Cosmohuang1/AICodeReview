@@ -12,6 +12,7 @@ export interface ReviewComment {
   message: string;
   suggestion?: string;
   confidence: number;
+  diffPosition?: number;
 }
 
 export interface CodeChunk {
