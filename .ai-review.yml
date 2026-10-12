@@ -1,0 +1,27 @@
+# ai-review 配置文件
+# 将此文件放到需要 Review 的仓库根目录
+
+language: zh  # zh | en
+
+# 公司自定义规范（违反时会被 custom agent 报告为 error）
+rules:
+  - "所有公共 API 函数必须有 JSDoc 注释"
+  - "禁止在生产代码中使用 console.log，请使用统一日志库"
+  - "数据库查询必须使用参数化查询，禁止字符串拼接"
+  - "所有异步函数必须有 try-catch 或在调用方处理 Promise rejection"
+
+# 排除文件（在默认排除规则基础上追加）
+exclude:
+  - "*.snap"
+  - "coverage/**"
+  - "__mocks__/**"
+
+# 各维度的严重级别覆盖（默认值见文档）
+# severityOverride:
+#   style: warning
+
+# Self-Critique 过滤阈值（0-1，越高越严格，默认 0.6）
+selfCritiqueThreshold: 0.65
+
+# 单次 Review 最多审查文件数（默认 20）
+maxFilesPerReview: 20
