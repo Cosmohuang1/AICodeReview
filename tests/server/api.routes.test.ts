@@ -65,4 +65,45 @@ describe('API routes (/api)', () => {
     expect(html).toContain('AICodeReview');
     expect(html).toContain('shadcn');
   });
+
+  it('GET /api/workspace/status returns real Git workspace metadata', async () => {
+    const res = await fetch(`${baseUrl}/api/workspace/status`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(typeof data.currentBranch).toBe('string');
+    expect(typeof data.hasChanges).toBe('boolean');
+    expect(Array.isArray(data.changedFiles)).toBe(true);
+  });
+
+  it('GET /api/recents returns initial real workspace task without mock data', async () => {
+    const res = await fetch(`${baseUrl}/api/recents`);
+    expect(res.status).toBe(200);
+    const list = await res.json();
+    expect(Array.isArray(list)).toBe(true);
+    expect(list.length).toBeGreaterThanOrEqual(1);
+    expect(list[0].id).toBe('rev_current_workspace');
+  });
+
+  it('POST /api/agent/deliver returns branch delivery status and PR url', async () => {
+    const res = await fetch(`${baseUrl}/api/agent/deliver`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch: 'test/deliver-branch' }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.branch).toBe('test/deliver-branch');
+    expect(data.prUrl).toContain('test/deliver-branch');
+  });
+
+  it('POST /api/agent/execute with empty prompt returns 400', async () => {
+    const res = await fetch(`${baseUrl}/api/agent/execute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: '' }),
+    });
+    expect(res.status).toBe(400);
+  });
 });

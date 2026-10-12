@@ -313,16 +313,19 @@
       </button>
     </div>
 
-    <!-- 引导横幅 -->
-    <div class="w-full bg-[#f4f5f7] border border-zinc-200/80 rounded-xl p-3.5 flex items-center justify-between mb-8">
+    <!-- 本地 Git 工作区实时状态栏 -->
+    <div id="workspaceLiveCard" class="w-full bg-[#f4f5f7] border border-zinc-200/80 rounded-xl p-3.5 flex items-center justify-between mb-8">
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg bg-zinc-200 flex items-center justify-center text-zinc-700"><i data-lucide="zap" class="w-4 h-4"></i></div>
+        <div class="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600"><i data-lucide="git-branch" class="w-4 h-4"></i></div>
         <div>
-          <div class="font-semibold text-xs text-zinc-900">Give your agent a head start</div>
-          <div class="text-[11px] text-zinc-500">Add a skill with instructions you can use across tasks.</div>
+          <div id="workspaceLiveTitle" class="font-semibold text-xs text-zinc-900">本地工作区：同步中...</div>
+          <div id="workspaceLiveSubtitle" class="text-[11px] text-zinc-500">正在探测本地 Git 仓库状态...</div>
         </div>
       </div>
-      <button class="px-3 py-1 rounded-md bg-white border border-zinc-200 text-xs font-medium text-zinc-800 hover:bg-zinc-50 shadow-2xs">Add a skill</button>
+      <button id="btnReviewCurrentChanges" onclick="reviewCurrentChanges()" class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-xs font-medium text-white shadow-2xs flex items-center gap-1.5 transition-colors">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+        <span>审查当前变更</span>
+      </button>
     </div>
 
     <!-- 状态筛选 -->
@@ -361,7 +364,7 @@
 
       <div class="p-8 space-y-6 max-w-3xl mx-auto w-full flex-1">
         <div class="flex items-center gap-1.5 text-xs text-zinc-500 cursor-pointer hover:text-zinc-800">
-          <span id="detailWorkedTime" class="font-medium">Worked for 10m 40s</span>
+          <span id="detailWorkedTime" class="font-medium">实时同步</span>
           <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
         </div>
 
@@ -370,16 +373,22 @@
             <span>已完成并推送到任务分支，提交：</span>
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-[11px] font-medium">
               <i data-lucide="git-commit" class="w-3 h-3"></i>
-              <span id="detailPushedCommit">48e07c2</span>
+              <span id="detailPushedCommit">HEAD</span>
             </span>
+          </div>
+
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium w-fit">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+            <span>回归测试：</span>
+            <span id="detailRegressionStatus" class="font-semibold">本地环境就绪</span>
           </div>
 
           <ul id="detailBulletPoints" class="space-y-2 list-disc pl-5 text-zinc-700 font-normal"></ul>
           <p id="detailRiskNote" class="text-zinc-500 text-[11px] pt-1 leading-normal"></p>
 
           <div class="flex items-center gap-2 pt-2 text-[11px] text-zinc-400">
-            <span id="detailTimestamp">1 day ago</span>
-            <button onclick="copyDetailSummary()" class="hover:text-zinc-600"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+            <span id="detailTimestamp">刚刚</span>
+            <button onclick="copyDetailSummary()" class="hover:text-zinc-600" title="复制摘要"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
           </div>
         </div>
 
@@ -388,10 +397,10 @@
           <div class="px-4 py-3 bg-[#fafafa] border-b border-zinc-200 flex items-center justify-between">
             <div class="flex items-center gap-2">
               <i data-lucide="file-text" class="w-4 h-4 text-zinc-500"></i>
-              <span id="detailEditedFilesHeader" class="font-semibold text-xs text-zinc-900">Edited 9 files</span>
+              <span id="detailEditedFilesHeader" class="font-semibold text-xs text-zinc-900">Edited files</span>
               <span class="text-[11px] font-mono">
-                <span class="text-emerald-600 font-semibold" id="detailTotalAdditions">+491</span>
-                <span class="text-red-500 font-semibold" id="detailTotalDeletions">-14</span>
+                <span class="text-emerald-600 font-semibold" id="detailTotalAdditions">+0</span>
+                <span class="text-red-500 font-semibold" id="detailTotalDeletions">-0</span>
               </span>
             </div>
             <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400"></i>
@@ -411,11 +420,11 @@
               <button class="p-1 rounded hover:bg-zinc-200 text-zinc-500"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
               <span class="flex items-center gap-1 text-zinc-500 font-medium">
                 <span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
-                <span>Trial • 24/100 min left</span>
+                <span>Active • Connected</span>
               </span>
             </div>
             <div class="flex items-center gap-2">
-              <span class="flex items-center gap-1 text-zinc-500"><i data-lucide="clock" class="w-3 h-3"></i><span>46 min</span></span>
+              <span class="flex items-center gap-1 text-zinc-500"><i data-lucide="clock" class="w-3 h-3"></i><span>实时</span></span>
               <button class="p-1 rounded hover:bg-zinc-200 text-zinc-400"><i data-lucide="mic" class="w-3.5 h-3.5"></i></button>
               <button id="btnSendFollowUp" class="w-7 h-7 rounded-full bg-zinc-900 text-white flex items-center justify-center hover:bg-zinc-800 transition-transform hover:scale-105">
                 <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i>
@@ -437,13 +446,13 @@
           <div class="bg-[#f8f9fa] border border-zinc-200 rounded-lg p-2.5 flex items-center justify-between text-xs font-mono">
             <div class="flex items-center gap-1.5 truncate text-zinc-700">
               <i data-lucide="git-branch" class="w-3.5 h-3.5 text-zinc-400 shrink-0"></i>
-              <span id="detailRightBranch" class="truncate">coderabbit/review-current-changes</span>
+              <span id="detailRightBranch" class="truncate">main</span>
             </div>
             <button onclick="copyBranchName()" class="text-zinc-400 hover:text-zinc-600"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
           </div>
           <div class="flex items-center gap-1.5 text-[11px] text-zinc-500 pl-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            <span>Pushed • <span id="detailRightCommit" class="font-mono">48e07c2</span></span>
+            <span>Pushed • <span id="detailRightCommit" class="font-mono">HEAD</span></span>
           </div>
           <button id="btnRightCreatePR" class="w-full py-2 px-3 rounded-lg border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-800 transition-colors shadow-2xs flex items-center justify-center gap-1.5">
             <i data-lucide="git-pull-request" class="w-3.5 h-3.5 text-zinc-600"></i>
@@ -773,12 +782,73 @@
     async function init() {
       lucide.createIcons();
       bindNavigation();
+      await updateWorkspaceStatus();
       await loadTasks();
       await loadRepositories();
 
       window.addEventListener('hashchange', handleHashChange);
       if (window.location.hash) {
         handleHashChange();
+      }
+    }
+
+    async function updateWorkspaceStatus() {
+      try {
+        const res = await fetch('/api/workspace/status');
+        const status = await res.json();
+        if (!status.success) return;
+
+        const branchEl = document.getElementById('currentWorkspaceBranch');
+        if (branchEl) branchEl.textContent = status.currentBranch;
+
+        const titleEl = document.getElementById('workspaceLiveTitle');
+        const subEl = document.getElementById('workspaceLiveSubtitle');
+        if (titleEl && subEl) {
+          titleEl.textContent = `当前仓库: ${status.repoName} (${status.currentBranch})`;
+          if (status.hasChanges) {
+            subEl.textContent = `检测到 ${status.changedFiles.length} 个文件有修改 (+${status.totalAdditions} -${status.totalDeletions}) • 最新提交 ${status.lastCommit.hash || 'HEAD'}`;
+          } else {
+            subEl.textContent = `工作区干净，无未暂存/暂存修改 • 最新提交 ${status.lastCommit.hash || 'HEAD'}: ${status.lastCommit.message || ''}`;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to update workspace status:', err);
+      }
+    }
+
+    async function reviewCurrentChanges() {
+      const btn = document.getElementById('btnReviewCurrentChanges');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>正在分析 Diff...</span>`;
+      lucide.createIcons();
+
+      try {
+        const res = await fetch('/api/review', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'worktree' }),
+        });
+        const data = await res.json();
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        lucide.createIcons();
+
+        if (data.error) {
+          alert('审查失败: ' + data.error);
+          return;
+        }
+
+        await loadTasks();
+        await updateWorkspaceStatus();
+        if (data.task) {
+          selectTask(data.task);
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        lucide.createIcons();
+        alert('审查请求异常: ' + err.message);
       }
     }
 
@@ -1076,6 +1146,12 @@
       tasks.forEach(t => {
         const div = document.createElement('div');
         div.className = 'w-full bg-white border border-zinc-200 hover:border-zinc-300 rounded-xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-2xs hover:shadow-xs';
+        const isClean = t.status === 'completed';
+        const badgeClass = isClean 
+          ? 'bg-zinc-100 text-zinc-600 border-zinc-200' 
+          : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        const badgeText = isClean ? 'Clean' : 'Changes ready';
+
         div.innerHTML = `
           <div class="flex items-center gap-3">
             <div class="w-7 h-7 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-600 font-mono text-xs">
@@ -1084,7 +1160,7 @@
             <div>
               <div class="flex items-center gap-2">
                 <span class="font-semibold text-xs text-zinc-900">${t.title}</span>
-                <span class="text-[10px] px-2 py-0.5 rounded-full font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">Changes ready</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full font-medium border ${badgeClass}">${badgeText}</span>
               </div>
               <div class="text-[11px] text-zinc-400 mt-0.5">${t.repo} • @${t.author} • ${t.timestamp}</div>
             </div>
@@ -1106,12 +1182,17 @@
 
     function renderTaskDetail(task) {
       document.getElementById('detailTaskTitle').textContent = task.title;
-      document.getElementById('detailWorkedTime').textContent = task.workedTime || 'Worked for 10m 40s';
-      document.getElementById('detailPushedCommit').textContent = task.pushedCommit || '48e07c2';
-      document.getElementById('detailRightCommit').textContent = task.pushedCommit || '48e07c2';
-      document.getElementById('detailRightBranch').textContent = task.branch || 'coderabbit/review-current-changes';
-      document.getElementById('detailTimestamp').textContent = task.timestamp || '1 day ago';
+      document.getElementById('detailWorkedTime').textContent = task.workedTime || '实时同步';
+      document.getElementById('detailPushedCommit').textContent = task.pushedCommit || 'HEAD';
+      document.getElementById('detailRightCommit').textContent = task.pushedCommit || 'HEAD';
+      document.getElementById('detailRightBranch').textContent = task.branch || 'main';
+      document.getElementById('detailTimestamp').textContent = task.timestamp || '刚刚';
       document.getElementById('detailRiskNote').textContent = task.agentSummary?.riskNote || '';
+
+      const regEl = document.getElementById('detailRegressionStatus');
+      if (regEl) {
+        regEl.textContent = task.agentSummary?.regressionStatus || '本地环境就绪';
+      }
 
       const bpList = document.getElementById('detailBulletPoints');
       bpList.innerHTML = '';
@@ -1122,25 +1203,33 @@
       });
 
       const filesHeader = document.getElementById('detailEditedFilesHeader');
-      filesHeader.textContent = `Edited ${(task.editedFiles || []).length} files`;
-      document.getElementById('detailTotalAdditions').textContent = `+${task.totalAdditions || 491}`;
-      document.getElementById('detailTotalDeletions').textContent = `-${task.totalDeletions || 14}`;
+      const filesCount = (task.editedFiles || []).length;
+      filesHeader.textContent = filesCount > 0 ? `Edited ${filesCount} files` : 'No files modified';
+      document.getElementById('detailTotalAdditions').textContent = `+${task.totalAdditions ?? 0}`;
+      document.getElementById('detailTotalDeletions').textContent = `-${task.totalDeletions ?? 0}`;
 
       const filesList = document.getElementById('detailFilesList');
       filesList.innerHTML = '';
-      (task.editedFiles || []).forEach(f => {
-        const row = document.createElement('div');
-        row.className = 'px-4 py-2 flex items-center justify-between hover:bg-zinc-50 transition-colors cursor-pointer';
-        row.innerHTML = `
-          <span class="truncate text-zinc-700 font-mono pr-2">${f.path}</span>
-          <span class="shrink-0 font-medium">
-            <span class="text-emerald-600">+${f.additions}</span>
-            <span class="text-red-500 ml-1">-${f.deletions}</span>
-          </span>
-        `;
-        row.onclick = () => previewRawDiffModal(f.path);
-        filesList.appendChild(row);
-      });
+      if (filesCount === 0) {
+        const emptyRow = document.createElement('div');
+        emptyRow.className = 'px-4 py-3 text-zinc-400 text-xs italic';
+        emptyRow.textContent = '当前工作区无未提交的文件变动';
+        filesList.appendChild(emptyRow);
+      } else {
+        (task.editedFiles || []).forEach(f => {
+          const row = document.createElement('div');
+          row.className = 'px-4 py-2 flex items-center justify-between hover:bg-zinc-50 transition-colors cursor-pointer';
+          row.innerHTML = `
+            <span class="truncate text-zinc-700 font-mono pr-2">${f.path}</span>
+            <span class="shrink-0 font-medium">
+              <span class="text-emerald-600">+${f.additions}</span>
+              <span class="text-red-500 ml-1">-${f.deletions}</span>
+            </span>
+          `;
+          row.onclick = () => previewRawDiffModal(f.path);
+          filesList.appendChild(row);
+        });
+      }
 
       renderChatStream(task.chatHistory || []);
       lucide.createIcons();
@@ -1164,16 +1253,20 @@
 
     document.getElementById('btnExecutePrompt').addEventListener('click', async () => {
       const prompt = document.getElementById('taskPromptInput').value.trim();
+      if (!prompt) {
+        alert('请输入编程指令或需求描述！');
+        return;
+      }
       const btn = document.getElementById('btnExecutePrompt');
       btn.disabled = true;
       btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>`;
       lucide.createIcons();
 
       try {
-        const res = await fetch('/api/review', {
+        const res = await fetch('/api/agent/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, mode: 'worktree' }),
+          body: JSON.stringify({ prompt, runTests: true, autoCommit: true }),
         });
         const data = await res.json();
         btn.disabled = false;
@@ -1184,6 +1277,7 @@
 
         document.getElementById('taskPromptInput').value = '';
         await loadTasks();
+        await updateWorkspaceStatus();
         if (data.task) selectTask(data.task);
       } catch (err) {
         btn.disabled = false;
@@ -1220,12 +1314,31 @@
 
     document.getElementById('btnRightCreatePR').addEventListener('click', async () => {
       if (!currentTask) return;
+      const btn = document.getElementById('btnRightCreatePR');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>正在准备 PR...</span>`;
+      lucide.createIcons();
+
       try {
-        const res = await fetch(`/api/task/${currentTask.id}/create-pr`, { method: 'POST' });
+        const res = await fetch('/api/agent/deliver', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId: currentTask.id, branch: currentTask.branch }),
+        });
         const data = await res.json();
-        alert(`🎉 PR 创建成功！\n\n已基于任务分支 ${currentTask.branch} 自动向 main 提交 Pull Request #${data.prNumber || 44}。\n开发者可在 GitHub 上一键合并！`);
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        lucide.createIcons();
+
+        if (data.error) return alert('交付失败: ' + data.error);
+
+        alert(`🎉 PR 交付已就绪！\n\n已基于任务分支 ${data.branch} 准备 Pull Request。\n\n开发者可点击并在 GitHub 打开：\n${data.prUrl}`);
       } catch (err) {
-        alert('创建 PR 失败: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        lucide.createIcons();
+        alert('交付 PR 失败: ' + err.message);
       }
     });
 
