@@ -106,4 +106,38 @@ describe('API routes (/api)', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('GET /api/analytics returns real metrics matching workspace and tasks', async () => {
+    const res = await fetch(`${baseUrl}/api/analytics`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.activeRepositories).toBeGreaterThanOrEqual(1);
+    expect(data.passedTests).toBe(171);
+    expect(typeof data.workspaceAdditions).toBe('number');
+    expect(typeof data.workspaceDeletions).toBe('number');
+    expect(data.reviewerTimeSaved).toContain('小时');
+  });
+
+  it('GET /api/repositories returns connected repos and supports settings update', async () => {
+    const res = await fetch(`${baseUrl}/api/repositories`);
+    expect(res.status).toBe(200);
+    const repos = await res.json();
+    expect(Array.isArray(repos)).toBe(true);
+    expect(repos.length).toBeGreaterThanOrEqual(1);
+
+    const firstRepo = repos[0];
+    const settingsRes = await fetch(`${baseUrl}/api/repositories/${firstRepo.name}/settings`);
+    expect(settingsRes.status).toBe(200);
+    const settingsData = await settingsRes.json();
+    expect(settingsData.settings).toBeDefined();
+
+    const updateRes = await fetch(`${baseUrl}/api/repositories/${firstRepo.name}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autoReviewPR: false, reviewProfile: 'Strict', rules: ['禁止滥用 any'] }),
+    });
+    expect(updateRes.status).toBe(200);
+    const updateData = await updateRes.json();
+    expect(updateData.success).toBe(true);
+  });
 });
