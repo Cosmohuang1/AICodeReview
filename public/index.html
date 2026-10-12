@@ -258,10 +258,15 @@
     <!-- 本地 Git 工作区实时状态栏 -->
     <div id="workspaceLiveCard" class="w-full bg-[#f4f5f7] border border-zinc-200/80 rounded-xl p-3.5 flex items-center justify-between mb-8">
       <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600"><i data-lucide="git-branch" class="w-4 h-4"></i></div>
+        <div class="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600 shrink-0"><i data-lucide="git-branch" class="w-4 h-4"></i></div>
         <div>
-          <div id="workspaceLiveTitle" class="font-semibold text-xs text-zinc-900">本地工作区：同步中...</div>
-          <div id="workspaceLiveSubtitle" class="text-[11px] text-zinc-500">正在探测本地 Git 仓库状态...</div>
+          <div class="flex items-center gap-2">
+            <span class="font-semibold text-xs text-zinc-900">当前工作代码库:</span>
+            <select id="activeRepoSelector" onchange="changeActiveRepo(this.value)" class="bg-white border border-zinc-300 rounded-md px-2 py-0.5 text-xs font-semibold text-zinc-900 focus:outline-none cursor-pointer hover:border-zinc-400 shadow-2xs">
+              <!-- 动态加载已关联仓库 -->
+            </select>
+          </div>
+          <div id="workspaceLiveSubtitle" class="text-[11px] text-zinc-500 mt-1">正在探测本地 Git 仓库状态...</div>
         </div>
       </div>
       <button id="btnReviewCurrentChanges" onclick="reviewCurrentChanges()" class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-xs font-medium text-white shadow-2xs flex items-center gap-1.5 transition-colors">
@@ -303,11 +308,40 @@
         <button class="p-1.5 rounded hover:bg-zinc-100 text-zinc-400"><i data-lucide="bell" class="w-4 h-4"></i></button>
       </div>
 
-      <div class="p-8 space-y-6 max-w-3xl mx-auto w-full flex-1">
+      <div class="p-8 space-y-5 max-w-3xl mx-auto w-full flex-1">
+        <!-- 用户下达的任务气泡 (如适用) -->
+        <div id="detailUserPromptContainer" class="hidden flex justify-end">
+          <div class="bg-zinc-100 border border-zinc-200/90 text-zinc-900 rounded-2xl rounded-tr-xs px-4 py-2 text-xs font-medium max-w-lg shadow-2xs">
+            <span id="detailUserPromptText"></span>
+          </div>
+        </div>
+
         <div class="flex items-center gap-1.5 text-xs text-zinc-500 cursor-pointer hover:text-zinc-800">
+          <i data-lucide="clock" class="w-3.5 h-3.5 text-zinc-400"></i>
           <span id="detailWorkedTime" class="font-medium">实时同步</span>
           <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
         </div>
+
+        <!-- 思考分析过程展示 (Collapsible Thinking Process) -->
+        <div id="detailThoughtBox" class="border border-purple-200 bg-purple-50/40 rounded-xl p-3.5 shadow-2xs">
+          <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleThoughtBox()">
+            <div class="flex items-center gap-2 text-xs font-semibold text-purple-900">
+              <i data-lucide="brain" class="w-4 h-4 text-purple-600"></i>
+              <span>深度思考与决策链路 (Thinking Process)</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-purple-600 hover:text-purple-800">
+              <span class="text-[11px] font-medium" id="thoughtBoxToggleLabel">收起</span>
+              <i data-lucide="chevron-up" id="thoughtBoxChevron" class="w-3.5 h-3.5 transition-transform"></i>
+            </div>
+          </div>
+          <div id="detailThoughtContent" class="mt-2.5 pt-2.5 border-t border-purple-100 text-xs text-purple-950 font-mono leading-relaxed whitespace-pre-wrap pl-1"></div>
+        </div>
+
+        <!-- 真实命令执行步骤 (Ran X commands) -->
+        <div id="detailStepsContainer" class="space-y-3"></div>
+
+        <!-- 智能体直接回应/解释消息 -->
+        <div id="detailAgentMessage" class="text-xs text-zinc-800 leading-relaxed font-normal bg-zinc-50 border border-zinc-200/80 rounded-xl p-3.5 hidden"></div>
 
         <div class="space-y-3 text-xs text-zinc-800 leading-relaxed">
           <div class="flex items-center gap-1.5 text-zinc-700">
@@ -584,16 +618,40 @@
       </div>
 
       <!-- Tab 1: 本地 Git 仓库 -->
-      <div id="tabContentLocal" class="space-y-3 pt-1">
-        <p class="text-[11px] text-zinc-500">指定本地工作副本路径，无须 GitHub App 即可直接在 Web 控制台或 CLI 进行实时审查与编码。</p>
-        <div>
-          <label class="text-xs font-medium text-zinc-700 block mb-1">仓库名称</label>
-          <input type="text" id="newRepoNameInput" placeholder="例如：my-backend 或 frontend-app" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-zinc-400">
+      <div id="tabContentLocal" class="space-y-3.5 pt-1">
+        <p class="text-[11px] text-zinc-500">指定本地工作副本路径，无须 GitHub App 即可直接在 Web 控制台进行多仓库切换、实时审查与编码。</p>
+        
+        <!-- 快速选取已检测到的本地仓库 -->
+        <div class="bg-zinc-50 border border-zinc-200/80 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-medium text-zinc-700 flex items-center gap-1.5">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-orange-500"></i>
+              <span>系统检测到的本地仓库 (点击直接选取)</span>
+            </span>
+            <button type="button" onclick="loadDetectedRepos()" class="text-[11px] text-zinc-400 hover:text-zinc-700 flex items-center gap-1">
+              <i data-lucide="refresh-cw" class="w-3 h-3"></i><span>刷新</span>
+            </button>
+          </div>
+          <div id="detectedReposList" class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+            <span class="text-[11px] text-zinc-400 italic">正在扫描本地工程...</span>
+          </div>
         </div>
 
         <div>
           <label class="text-xs font-medium text-zinc-700 block mb-1">本地目录路径 (Git 工作区)</label>
-          <input type="text" id="newRepoPathInput" placeholder="例如：C:\Users\admin\source\repos\my-project" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-zinc-400">
+          <div class="flex items-center gap-2">
+            <input type="text" id="newRepoPathInput" oninput="onRepoPathInput(this.value)" placeholder="例如：D:\github\my-project" class="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-zinc-400">
+            <button type="button" onclick="openFolderPickerModal()" class="px-3 py-2 rounded-lg bg-white hover:bg-zinc-100 text-zinc-700 text-xs font-medium border border-zinc-300 flex items-center gap-1.5 shrink-0 transition-colors shadow-2xs">
+              <i data-lucide="folder-search" class="w-3.5 h-3.5 text-zinc-500"></i>
+              <span>浏览文件夹</span>
+            </button>
+          </div>
+          <div id="pathValidationFeedback" class="text-[11px] mt-1.5 hidden flex items-center gap-1.5"></div>
+        </div>
+
+        <div>
+          <label class="text-xs font-medium text-zinc-700 block mb-1">仓库名称</label>
+          <input type="text" id="newRepoNameInput" placeholder="例如：my-backend 或 frontend-app" class="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-zinc-400">
         </div>
 
         <div>
@@ -621,6 +679,60 @@
       <div class="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
         <button onclick="closeAddRepoModal()" class="px-3.5 py-1.5 rounded-lg border border-zinc-200 text-xs font-medium text-zinc-600 hover:bg-zinc-50">取消</button>
         <button onclick="submitAddRepository()" class="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold text-white shadow-sm">确认关联</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Modal 1.5: 选取本地代码文件夹弹窗 -->
+  <div id="folderPickerModal" class="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-zinc-200 rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col max-h-[85vh] space-y-4">
+      <div class="flex items-center justify-between border-b border-zinc-100 pb-3">
+        <h3 class="font-semibold text-sm text-zinc-900 flex items-center gap-2">
+          <i data-lucide="folder" class="w-4 h-4 text-orange-500"></i>
+          <span>选取本地代码文件夹</span>
+        </h3>
+        <button onclick="closeFolderPickerModal()" class="text-zinc-400 hover:text-zinc-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+
+      <!-- 常用快捷跳板目录 -->
+      <div class="flex items-center gap-1.5 flex-wrap text-xs">
+        <span class="text-zinc-400 text-[11px] font-medium mr-1">快捷位置:</span>
+        <button type="button" onclick="navigateFolder('D:\\github')" class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-mono text-[11px]">D:\github</button>
+        <button type="button" onclick="navigateFolder('D:\\Projects')" class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-mono text-[11px]">D:\Projects</button>
+        <button type="button" onclick="navigateFolder('D:\\work')" class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-mono text-[11px]">D:\work</button>
+        <button type="button" onclick="navigateFolder('C:\\Users\\admin\\source\\repos')" class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-mono text-[11px]">C:\...\repos</button>
+        <button type="button" onclick="navigateFolder('C:\\')" class="px-2 py-1 rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-mono text-[11px]">C 盘</button>
+        <button type="button" onclick="navigateFolder('D:\\')" class="px-2 py-1 rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-mono text-[11px]">D 盘</button>
+      </div>
+
+      <!-- 当前路径输入与面包屑 -->
+      <div class="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-lg p-2 text-xs font-mono text-zinc-800">
+        <i data-lucide="hard-drive" class="w-3.5 h-3.5 text-zinc-400 shrink-0"></i>
+        <input type="text" id="folderPickerPathInput" onkeydown="if(event.key==='Enter') navigateFolder(this.value)" class="flex-1 bg-transparent focus:outline-none text-xs" placeholder="输入路径并回车...">
+        <button type="button" onclick="navigateFolder(document.getElementById('folderPickerPathInput').value)" class="px-2 py-0.5 rounded bg-zinc-200 hover:bg-zinc-300 text-[11px] text-zinc-700">进入</button>
+      </div>
+
+      <!-- 子文件夹列表展示 -->
+      <div class="flex-1 overflow-y-auto border border-zinc-200 rounded-xl divide-y divide-zinc-100 min-h-[260px] max-h-[380px] bg-white text-xs">
+        <div id="folderPickerList" class="p-1 space-y-0.5">
+          <!-- 动态渲染 -->
+        </div>
+      </div>
+
+      <!-- 底部状态与操作按钮 -->
+      <div class="flex items-center justify-between pt-2 border-t border-zinc-100 text-xs">
+        <div class="truncate mr-2">
+          <span class="text-zinc-400">当前选定: </span>
+          <span id="folderPickerSelectedLabel" class="font-mono font-semibold text-zinc-900 truncate">未选定</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" onclick="closeFolderPickerModal()" class="px-3.5 py-1.5 rounded-lg border border-zinc-200 text-xs font-medium text-zinc-600 hover:bg-zinc-50">取消</button>
+          <button type="button" onclick="confirmFolderPickerSelection()" class="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-xs font-semibold text-white shadow-sm flex items-center gap-1.5">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+            <span>确定选取此目录</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -699,13 +811,17 @@
     let currentTask = null;
     let tasksList = [];
     let repositories = [];
+    let activeRepoPath = '';
+    let currentBrowsePath = 'D:\\github';
+    let selectedFolderPath = '';
+    let pathValidateTimer = null;
 
     async function init() {
       lucide.createIcons();
       bindNavigation();
+      await loadRepositories();
       await updateWorkspaceStatus();
       await loadTasks();
-      await loadRepositories();
       await loadAnalytics();
 
       window.addEventListener('hashchange', handleHashChange);
@@ -716,26 +832,50 @@
 
     async function updateWorkspaceStatus() {
       try {
-        const res = await fetch('/api/workspace/status');
+        const url = activeRepoPath 
+          ? `/api/workspace/status?repoPath=${encodeURIComponent(activeRepoPath)}`
+          : '/api/workspace/status';
+        const res = await fetch(url);
         const status = await res.json();
         if (!status.success) return;
 
         const branchEl = document.getElementById('currentWorkspaceBranch');
-        if (branchEl) branchEl.textContent = status.currentBranch;
+        if (branchEl) branchEl.textContent = status.currentBranch || 'main';
 
-        const titleEl = document.getElementById('workspaceLiveTitle');
         const subEl = document.getElementById('workspaceLiveSubtitle');
-        if (titleEl && subEl) {
-          titleEl.textContent = `当前仓库: ${status.repoName} (${status.currentBranch})`;
+        if (subEl) {
           if (status.hasChanges) {
-            subEl.textContent = `检测到 ${status.changedFiles.length} 个文件有修改 (+${status.totalAdditions} -${status.totalDeletions}) • 最新提交 ${status.lastCommit.hash || 'HEAD'}`;
+            subEl.textContent = `检测到 ${status.changedFiles.length} 个文件有修改 (+${status.totalAdditions} -${status.totalDeletions}) • 最新提交 ${status.lastCommit?.hash || 'HEAD'}`;
           } else {
-            subEl.textContent = `工作区干净，无未暂存/暂存修改 • 最新提交 ${status.lastCommit.hash || 'HEAD'}: ${status.lastCommit.message || ''}`;
+            subEl.textContent = `工作区干净，无未暂存/暂存修改 • 最新提交 ${status.lastCommit?.hash || 'HEAD'}: ${status.lastCommit?.message || ''}`;
           }
         }
       } catch (err) {
         console.error('Failed to update workspace status:', err);
       }
+    }
+
+    function renderActiveRepoSelector(repos) {
+      const sel = document.getElementById('activeRepoSelector');
+      if (!sel) return;
+      sel.innerHTML = '';
+      repos.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.path || '';
+        opt.textContent = `${r.name} (${r.path || '默认工程'})`;
+        if (activeRepoPath && (r.path === activeRepoPath || r.name === activeRepoPath)) {
+          opt.selected = true;
+        }
+        sel.appendChild(opt);
+      });
+      if (!activeRepoPath && repos.length > 0) {
+        activeRepoPath = repos[0].path || '';
+      }
+    }
+
+    async function changeActiveRepo(pathVal) {
+      activeRepoPath = pathVal;
+      await updateWorkspaceStatus();
     }
 
     async function reviewCurrentChanges() {
@@ -749,7 +889,7 @@
         const res = await fetch('/api/review', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'worktree' }),
+          body: JSON.stringify({ mode: 'worktree', repoPath: activeRepoPath || undefined }),
         });
         const data = await res.json();
         btn.disabled = false;
@@ -892,12 +1032,13 @@
       chev.classList.toggle('rotate-180');
     }
 
-    // 仓库管理逻辑 (第 4 张截图)
+    // 仓库管理逻辑
     async function loadRepositories() {
       try {
         const res = await fetch('/api/repositories');
         repositories = await res.json();
         renderReposTable(repositories);
+        renderActiveRepoSelector(repositories);
       } catch (err) {
         console.error('Failed to load repositories:', err);
       }
@@ -972,11 +1113,203 @@
 
     function openAddRepoModal() {
       document.getElementById('addRepoModal').classList.remove('hidden');
+      loadDetectedRepos();
       lucide.createIcons();
     }
 
     function closeAddRepoModal() {
       document.getElementById('addRepoModal').classList.add('hidden');
+    }
+
+    async function loadDetectedRepos() {
+      const container = document.getElementById('detectedReposList');
+      if (!container) return;
+      container.innerHTML = `<span class="text-[11px] text-zinc-400 italic">正在扫描系统工程...</span>`;
+      try {
+        const res = await fetch('/api/fs/detected-repos');
+        const repos = await res.json();
+        container.innerHTML = '';
+        if (!repos || repos.length === 0) {
+          container.innerHTML = `<span class="text-[11px] text-zinc-400">未探测到常见目录下的 Git 仓库，可点击右侧“浏览文件夹”手动选取</span>`;
+          return;
+        }
+        repos.forEach(r => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `px-2 py-1 rounded-md text-[11px] border font-mono transition-colors flex items-center gap-1.5 ${r.isGit ? 'bg-orange-50/70 border-orange-200 text-orange-900 hover:bg-orange-100' : 'bg-zinc-100 border-zinc-200 text-zinc-700 hover:bg-zinc-200'}`;
+          btn.innerHTML = `
+            <span class="truncate max-w-[130px] font-semibold">${r.name}</span>
+            ${r.isGit ? '<span class="text-[9px] px-1 bg-orange-200/80 text-orange-900 rounded font-normal">Git</span>' : ''}
+          `;
+          btn.title = r.path;
+          btn.onclick = () => {
+            document.getElementById('newRepoPathInput').value = r.path;
+            document.getElementById('newRepoNameInput').value = r.name;
+            validatePath(r.path);
+          };
+          container.appendChild(btn);
+        });
+      } catch (err) {
+        container.innerHTML = `<span class="text-[11px] text-red-500">探测失败: ${err.message}</span>`;
+      }
+    }
+
+    function onRepoPathInput(val) {
+      clearTimeout(pathValidateTimer);
+      pathValidateTimer = setTimeout(() => validatePath(val), 250);
+    }
+
+    async function validatePath(pathVal) {
+      const fb = document.getElementById('pathValidationFeedback');
+      if (!fb) return;
+      const trimmed = (pathVal || '').trim();
+      if (!trimmed) {
+        fb.classList.add('hidden');
+        fb.innerHTML = '';
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/fs/validate-path?path=${encodeURIComponent(trimmed)}`);
+        const data = await res.json();
+        fb.classList.remove('hidden');
+        if (data.exists && data.isGit) {
+          fb.className = 'text-[11px] mt-1.5 flex items-center gap-1.5 text-emerald-700 font-medium';
+          fb.innerHTML = `<i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-600"></i><span>有效 Git 仓库 (分支: ${data.branch}) • 路径已就绪</span>`;
+          if (!document.getElementById('newRepoNameInput').value) {
+            document.getElementById('newRepoNameInput').value = data.name;
+          }
+        } else if (data.exists && !data.isGit) {
+          fb.className = 'text-[11px] mt-1.5 flex items-center gap-1.5 text-amber-700 font-medium';
+          fb.innerHTML = `<i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-600"></i><span>目录存在，但未初始化 Git 仓库</span>`;
+        } else {
+          fb.className = 'text-[11px] mt-1.5 flex items-center gap-1.5 text-red-600 font-medium';
+          fb.innerHTML = `<i data-lucide="x-circle" class="w-3.5 h-3.5 text-red-500"></i><span>路径不存在或无法访问</span>`;
+        }
+        lucide.createIcons();
+      } catch (err) {
+        fb.classList.remove('hidden');
+        fb.className = 'text-[11px] mt-1.5 text-red-600';
+        fb.textContent = '校验出错: ' + err.message;
+      }
+    }
+
+    function openFolderPickerModal() {
+      document.getElementById('folderPickerModal').classList.remove('hidden');
+      const inputVal = document.getElementById('newRepoPathInput').value.trim();
+      navigateFolder(inputVal || currentBrowsePath);
+      lucide.createIcons();
+    }
+
+    function closeFolderPickerModal() {
+      document.getElementById('folderPickerModal').classList.add('hidden');
+    }
+
+    async function navigateFolder(dirPath) {
+      const listEl = document.getElementById('folderPickerList');
+      const pathInput = document.getElementById('folderPickerPathInput');
+      const selectedLabel = document.getElementById('folderPickerSelectedLabel');
+      
+      listEl.innerHTML = `<div class="p-3 text-zinc-400 text-xs italic">正在读取目录...</div>`;
+      try {
+        const res = await fetch(`/api/fs/browse?dir=${encodeURIComponent(dirPath || '')}`);
+        const data = await res.json();
+        if (data.error) {
+          listEl.innerHTML = `<div class="p-3 text-red-500 text-xs">${data.error}</div>`;
+          return;
+        }
+
+        const currentPath = data.currentDir || data.currentPath;
+        currentBrowsePath = currentPath;
+        selectedFolderPath = currentPath;
+        pathInput.value = currentPath;
+        selectedLabel.textContent = currentPath;
+
+        listEl.innerHTML = '';
+
+        const parent = data.parentDir || data.parentPath;
+        if (parent && parent !== currentPath) {
+          const upRow = document.createElement('div');
+          upRow.className = 'flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 cursor-pointer font-medium text-zinc-700 select-none';
+          upRow.innerHTML = `<i data-lucide="corner-left-up" class="w-4 h-4 text-zinc-500"></i><span>.. (返回上一级目录)</span>`;
+          upRow.onclick = () => navigateFolder(parent);
+          listEl.appendChild(upRow);
+        }
+
+        const items = data.subdirs || data.items || [];
+        if (!items || items.length === 0) {
+          const emptyRow = document.createElement('div');
+          emptyRow.className = 'p-3 text-zinc-400 italic';
+          emptyRow.textContent = '此目录下无子文件夹';
+          listEl.appendChild(emptyRow);
+        } else {
+          items.forEach(item => {
+            const row = document.createElement('div');
+            const isSel = selectedFolderPath === item.path;
+            row.className = `flex items-center justify-between px-3 py-2 rounded-lg hover:bg-zinc-100 cursor-pointer transition-colors select-none ${isSel ? 'bg-orange-50 text-orange-900 font-semibold' : 'text-zinc-800'}`;
+            row.innerHTML = `
+              <div class="flex items-center gap-2 truncate">
+                <i data-lucide="${item.isGit ? 'folder-git-2' : 'folder'}" class="w-4 h-4 ${item.isGit ? 'text-orange-500' : 'text-zinc-400'} shrink-0"></i>
+                <span class="truncate font-mono">${item.name}</span>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                ${item.isGit ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">Git 仓库</span>' : ''}
+                <button type="button" class="btn-enter-dir px-2 py-0.5 text-[11px] rounded bg-zinc-100 hover:bg-zinc-200 text-zinc-600 font-normal">进入</button>
+              </div>
+            `;
+            row.onclick = (e) => {
+              if (e.target.classList.contains('btn-enter-dir')) {
+                navigateFolder(item.path);
+              } else {
+                selectedFolderPath = item.path;
+                selectedLabel.textContent = item.path;
+                document.querySelectorAll('#folderPickerList > div').forEach(el => el.classList.remove('bg-orange-50', 'text-orange-900', 'font-semibold'));
+                row.classList.add('bg-orange-50', 'text-orange-900', 'font-semibold');
+              }
+            };
+            row.ondblclick = () => navigateFolder(item.path);
+            listEl.appendChild(row);
+          });
+        }
+        lucide.createIcons();
+      } catch (err) {
+        listEl.innerHTML = `<div class="p-3 text-red-500 text-xs">加载失败: ${err.message}</div>`;
+      }
+    }
+
+    function confirmFolderPickerSelection() {
+      if (!selectedFolderPath) return alert('请先选择一个目录！');
+      document.getElementById('newRepoPathInput').value = selectedFolderPath;
+      const segs = selectedFolderPath.replace(/[\\\\/]+$/, '').split(/[\\\\/]/);
+      const lastSeg = segs[segs.length - 1];
+      if (lastSeg && !document.getElementById('newRepoNameInput').value) {
+        document.getElementById('newRepoNameInput').value = lastSeg;
+      }
+      validatePath(selectedFolderPath);
+      closeFolderPickerModal();
+    }
+
+    function toggleThoughtBox() {
+      const content = document.getElementById('detailThoughtContent');
+      const label = document.getElementById('thoughtBoxToggleLabel');
+      const chev = document.getElementById('thoughtBoxChevron');
+      if (!content) return;
+      content.classList.toggle('hidden');
+      const isHidden = content.classList.contains('hidden');
+      label.textContent = isHidden ? '展开' : '收起';
+      if (chev) {
+        chev.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+      }
+    }
+
+    function toggleCommandCollapse(cmdId) {
+      const outEl = document.getElementById(cmdId);
+      const chev = document.getElementById(`chev_${cmdId}`);
+      if (!outEl) return;
+      outEl.classList.toggle('hidden');
+      if (chev) {
+        chev.style.transform = outEl.classList.contains('hidden') ? 'rotate(-90deg)' : 'rotate(0deg)';
+      }
     }
 
     async function submitAddRepository() {
@@ -1152,6 +1485,85 @@
       document.getElementById('detailTimestamp').textContent = task.timestamp || '刚刚';
       document.getElementById('detailRiskNote').textContent = task.agentSummary?.riskNote || '';
 
+      // 用户指令/提问气泡
+      const userPromptBox = document.getElementById('detailUserPromptContainer');
+      const userPromptText = document.getElementById('detailUserPromptText');
+      if (task.agentSummary?.userPrompt) {
+        userPromptBox.classList.remove('hidden');
+        userPromptText.textContent = task.agentSummary.userPrompt;
+      } else {
+        userPromptBox.classList.add('hidden');
+      }
+
+      // 深度思考与决策链路 (Thinking Process)
+      const thoughtBox = document.getElementById('detailThoughtBox');
+      const thoughtContent = document.getElementById('detailThoughtContent');
+      if (task.agentSummary?.thoughtProcess) {
+        thoughtBox.classList.remove('hidden');
+        thoughtContent.textContent = task.agentSummary.thoughtProcess;
+        thoughtContent.classList.remove('hidden');
+        document.getElementById('thoughtBoxToggleLabel').textContent = '收起';
+        const chev = document.getElementById('thoughtBoxChevron');
+        if (chev) chev.style.transform = 'rotate(0deg)';
+      } else {
+        thoughtBox.classList.add('hidden');
+      }
+
+      // 终端命令执行步骤 (Ran X commands)
+      const stepsContainer = document.getElementById('detailStepsContainer');
+      stepsContainer.innerHTML = '';
+      const steps = task.agentSummary?.steps || [];
+      if (steps.length > 0) {
+        steps.forEach((step, stepIdx) => {
+          const stepBox = document.createElement('div');
+          stepBox.className = 'border border-zinc-200 rounded-xl bg-zinc-50 overflow-hidden text-xs shadow-2xs';
+
+          const cmds = step.commands || [];
+          let cmdsHtml = '';
+          cmds.forEach((c, cIdx) => {
+            const cmdId = `step_${stepIdx}_cmd_${cIdx}`;
+            cmdsHtml += `
+              <div class="border-t border-zinc-200/80 first:border-t-0">
+                <div class="px-3.5 py-2.5 bg-white hover:bg-zinc-50 flex items-center justify-between cursor-pointer select-none" onclick="toggleCommandCollapse('${cmdId}')">
+                  <div class="flex items-center gap-2 font-mono text-zinc-800 truncate">
+                    <span class="text-zinc-400 font-bold">>_</span>
+                    <span class="truncate font-semibold">${c.command}</span>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">执行完成</span>
+                    <i data-lucide="chevron-down" id="chev_${cmdId}" class="w-3.5 h-3.5 text-zinc-400 transition-transform"></i>
+                  </div>
+                </div>
+                <div id="${cmdId}" class="p-3 bg-zinc-950 text-zinc-200 font-mono text-[11px] whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed border-t border-zinc-800">
+                  ${c.output || '(无输出)'}
+                </div>
+              </div>
+            `;
+          });
+
+          stepBox.innerHTML = `
+            <div class="px-3.5 py-2 bg-zinc-100/80 border-b border-zinc-200 flex items-center justify-between text-zinc-700">
+              <div class="flex items-center gap-2 font-semibold">
+                <i data-lucide="terminal" class="w-3.5 h-3.5 text-zinc-600"></i>
+                <span>${step.title || '命令行执行步骤'}</span>
+                <span class="text-[11px] text-zinc-400 font-normal">(${cmds.length} 个命令)</span>
+              </div>
+            </div>
+            <div>${cmdsHtml}</div>
+          `;
+          stepsContainer.appendChild(stepBox);
+        });
+      }
+
+      // 智能体回应消息
+      const agentMsg = document.getElementById('detailAgentMessage');
+      if (task.agentSummary?.message) {
+        agentMsg.classList.remove('hidden');
+        agentMsg.textContent = task.agentSummary.message;
+      } else {
+        agentMsg.classList.add('hidden');
+      }
+
       const regEl = document.getElementById('detailRegressionStatus');
       if (regEl) {
         regEl.textContent = task.agentSummary?.regressionStatus || '本地环境就绪';
@@ -1229,7 +1641,7 @@
         const res = await fetch('/api/agent/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, runTests: true, autoCommit: true }),
+          body: JSON.stringify({ prompt, runTests: true, autoCommit: true, repoPath: activeRepoPath || undefined }),
         });
         const data = await res.json();
         btn.disabled = false;
@@ -1247,7 +1659,6 @@
         btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
         lucide.createIcons();
         alert('网络请求异常: ' + err.message);
-      }
     });
 
     document.getElementById('btnSendFollowUp').addEventListener('click', async () => {

@@ -112,7 +112,7 @@ describe('API routes (/api)', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.activeRepositories).toBeGreaterThanOrEqual(1);
-    expect(data.passedTests).toBe(171);
+    expect(data.passedTests).toBe(173);
     expect(typeof data.workspaceAdditions).toBe('number');
     expect(typeof data.workspaceDeletions).toBe('number');
     expect(data.reviewerTimeSaved).toContain('小时');
@@ -139,5 +139,34 @@ describe('API routes (/api)', () => {
     expect(updateRes.status).toBe(200);
     const updateData = await updateRes.json();
     expect(updateData.success).toBe(true);
+  });
+
+  it('GET /api/fs/detected-repos returns detected local projects list', async () => {
+    const res = await fetch(`${baseUrl}/api/fs/detected-repos`);
+    expect(res.status).toBe(200);
+    const list = await res.json();
+    expect(Array.isArray(list)).toBe(true);
+    expect(list.length).toBeGreaterThanOrEqual(1);
+    expect(list[0]).toHaveProperty('name');
+    expect(list[0]).toHaveProperty('path');
+    expect(list[0]).toHaveProperty('isGit');
+  });
+
+  it('GET /api/fs/browse and POST /api/fs/validate-path explore and validate local folders', async () => {
+    const browseRes = await fetch(`${baseUrl}/api/fs/browse?dir=${encodeURIComponent(process.cwd())}`);
+    expect(browseRes.status).toBe(200);
+    const browseData = await browseRes.json();
+    expect(browseData.currentDir).toBeDefined();
+    expect(Array.isArray(browseData.subdirs)).toBe(true);
+
+    const validRes = await fetch(`${baseUrl}/api/fs/validate-path`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: process.cwd() }),
+    });
+    expect(validRes.status).toBe(200);
+    const validData = await validRes.json();
+    expect(validData.valid).toBe(true);
+    expect(validData.isGit).toBe(true);
   });
 });
