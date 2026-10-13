@@ -13,6 +13,8 @@ import { buildPRBody, buildInlineCommentBody } from '../reporter/markdown.report
 
 import { GitService, type WorkspaceStatus } from '../services/git.service.js';
 import { AgentLoopService, type AgentTaskResult } from '../services/agent-loop.service.js';
+import { runReactEngine } from '../agent-engine/react-engine.js';
+import { defaultReactStreamer } from '../agent-engine/react-streamer.js';
 
 export const apiRouter = Router();
 
@@ -432,6 +434,74 @@ apiRouter.post('/agent/execute', async (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(500).json({ error: `执行 Coding Agent 失败: ${err.message}` });
   }
+});
+
+apiRouter.post('/agent/react/run', async (req: Request, res: Response) => {
+  const { prompt, repoPath = process.cwd(), sessionId: customSessionId, maxSteps = 10, testCmd, autoCommit = true } = req.body;
+  if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+    return res.status(400).json({ error: '必须提供 prompt 任务指令' });
+  }
+  const targetCwd = path.resolve(repoPath);
+  if (!fs.existsSync(targetCwd)) {
+    return res.status(400).json({ error: `指定仓库路径不存在: ${targetCwd}` });
+  }
+
+  const sessionId = customSessionId || `session_${Date.now()}`;
+  res.json({ success: true, sessionId, status: 'running' });
+
+  // 异步启动 ReAct 自主状态机
+  runReactEngine({
+    cwd: targetCwd,
+    prompt: prompt.trim(),
+    sessionId,
+    maxSteps,
+    testCmd,
+    autoCommit,
+    streamer: defaultReactStreamer
+  }).then(result => {
+    const newTaskItem: TaskDetail = {
+      id: result.id,
+      title: result.title,
+      repo: path.basename(targetCwd),
+      branch: result.branch,
+      pushedCommit: result.commitHash,
+      author: '本地开发者 (ReAct Agent)',
+      workedTime: result.workedTime,
+      timestamp: result.timestamp,
+      status: result.aborted ? 'failed' : 'changes_ready',
+      agentSummary: {
+        commit: result.commitHash,
+        bulletPoints: result.bulletPoints,
+        riskNote: result.riskNote,
+        regressionStatus: result.regressionStatus,
+        thoughtProcess: result.thoughtProcess,
+        userPrompt: prompt.trim(),
+        message: result.message,
+        steps: result.steps
+      },
+      totalAdditions: result.totalAdditions,
+      totalDeletions: result.totalDeletions,
+      editedFiles: result.editedFiles,
+      comments: [],
+      chatHistory: [
+        { role: 'user', text: prompt.trim(), time: '刚刚' },
+        { role: 'agent', text: result.message, time: '刚刚' }
+      ],
+      rawDiff: result.rawDiff
+    };
+    tasksList.unshift(newTaskItem);
+  }).catch(err => {
+    defaultReactStreamer.broadcast(sessionId, 'error', { error: err.message });
+  });
+});
+
+apiRouter.get('/agent/react/stream/:sessionId', (req: Request, res: Response) => {
+  defaultReactStreamer.registerClient(req.params.sessionId, res);
+});
+
+apiRouter.post('/agent/react/abort/:sessionId', (req: Request, res: Response) => {
+  const aborted = defaultReactStreamer.abortSession(req.params.sessionId);
+  res.json({ success: true, aborted });
 });
 
 apiRouter.post('/agent/deliver', (req: Request, res: Response) => {
