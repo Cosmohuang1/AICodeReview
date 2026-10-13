@@ -174,4 +174,18 @@ describe('SqliteStorage (Embedded SQLite persistence)', () => {
       expect(repos[0].visibility).toBe('Private');
     });
   });
+
+  describe('Preferences / Active workspace persistence', () => {
+    it('persists and retrieves user preferences such as active repo path', () => {
+      expect(storage.getPreference('activeRepoPath')).toBeNull();
+
+      storage.setPreference('activeRepoPath', 'D:/projects/my-app');
+      expect(storage.getPreference('activeRepoPath')).toBe('D:/projects/my-app');
+
+      // Update preference
+      storage.setPreference('activeRepoPath', 'D:/projects/another-app');
+      expect(storage.getPreference('activeRepoPath')).toBe('D:/projects/another-app');
+    });
+  });
 });
+

@@ -85,8 +85,14 @@ export class SqliteStorage {
         visibility TEXT NOT NULL,
         path TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS preferences (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
     `);
   }
+
 
   public saveTask(task: TaskDetail): void {
     const existing = this.getTask(task.id);
@@ -255,10 +261,25 @@ export class SqliteStorage {
     }));
   }
 
+  public setPreference(key: string, value: string): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO preferences (key, value)
+      VALUES (?, ?)
+    `);
+    stmt.run(key, value);
+  }
+
+  public getPreference(key: string): string | null {
+    const stmt = this.db.prepare('SELECT value FROM preferences WHERE key = ?');
+    const row = stmt.get(key) as { value: string } | undefined;
+    return row ? row.value : null;
+  }
+
   public close(): void {
     this.db.close();
   }
 }
+
 
 export const defaultSqliteStorage = new SqliteStorage();
 export default SqliteStorage;

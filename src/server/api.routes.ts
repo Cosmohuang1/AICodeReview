@@ -614,7 +614,28 @@ try {
 }
 
 apiRouter.get('/repositories', (_req: Request, res: Response) => {
-  res.json(connectedRepos);
+  const dbRepos = defaultSqliteStorage.listRepos();
+  const merged = [...connectedRepos];
+  dbRepos.forEach(r => {
+    if (!merged.some(m => m.id === r.id || (m.path && m.path === r.path))) {
+      merged.push(r);
+    }
+  });
+  res.json(merged);
+});
+
+apiRouter.get('/workspace/preference', (req: Request, res: Response) => {
+  const key = (req.query.key as string) || 'activeRepoPath';
+  const value = defaultSqliteStorage.getPreference(key);
+  res.json({ key, value });
+});
+
+apiRouter.post('/workspace/preference', (req: Request, res: Response) => {
+  const { key = 'activeRepoPath', value } = req.body;
+  if (typeof value === 'string') {
+    defaultSqliteStorage.setPreference(key, value);
+  }
+  res.json({ success: true, key, value });
 });
 
 export interface RepoSettings {
@@ -668,15 +689,17 @@ apiRouter.post('/repositories', (req: Request, res: Response) => {
     id: `repo_${Date.now()}`,
     name,
     visibility: visibility === 'Private' ? 'Private' : 'Public',
-    path: repoPath
+    path: repoPath ? path.resolve(repoPath) : undefined
   };
   connectedRepos.push(newRepo);
+  defaultSqliteStorage.saveRepo(newRepo);
   res.json({ success: true, repo: newRepo });
 });
 
 apiRouter.post('/repositories/sync', (_req: Request, res: Response) => {
   res.json({ success: true, message: '代码仓库列表同步成功', count: connectedRepos.length });
 });
+
 
 apiRouter.post('/diff', (req: Request, res: Response) => {
   const { repoPath = process.cwd(), mode = 'worktree', from, to } = req.body;

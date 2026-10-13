@@ -858,6 +858,22 @@
     async function init() {
       lucide.createIcons();
       bindNavigation();
+
+      // 从 localStorage 与服务端 SQLite 双重恢复上次选定的工作区目录
+      const savedPath = localStorage.getItem('ai_review_active_repo_path');
+      if (savedPath) {
+        activeRepoPath = savedPath;
+      } else {
+        try {
+          const prefRes = await fetch('/api/workspace/preference?key=activeRepoPath');
+          const pref = await prefRes.json();
+          if (pref && pref.value) {
+            activeRepoPath = pref.value;
+            localStorage.setItem('ai_review_active_repo_path', pref.value);
+          }
+        } catch {}
+      }
+
       await loadRepositories();
       await updateWorkspaceStatus();
       await loadTasks();
@@ -898,24 +914,44 @@
       const sel = document.getElementById('activeRepoSelector');
       if (!sel) return;
       sel.innerHTML = '';
+
+      let foundActive = false;
       repos.forEach(r => {
         const opt = document.createElement('option');
         opt.value = r.path || '';
         opt.textContent = `${r.name} (${r.path || '默认工程'})`;
         if (activeRepoPath && (r.path === activeRepoPath || r.name === activeRepoPath)) {
           opt.selected = true;
+          foundActive = true;
         }
         sel.appendChild(opt);
       });
-      if (!activeRepoPath && repos.length > 0) {
+
+      if (activeRepoPath && !foundActive) {
+        const opt = document.createElement('option');
+        opt.value = activeRepoPath;
+        opt.textContent = `当前指定工作区 (${activeRepoPath})`;
+        opt.selected = true;
+        sel.appendChild(opt);
+      } else if (!activeRepoPath && repos.length > 0) {
         activeRepoPath = repos[0].path || '';
+        localStorage.setItem('ai_review_active_repo_path', activeRepoPath);
       }
     }
 
     async function changeActiveRepo(pathVal) {
       activeRepoPath = pathVal;
+      if (pathVal) {
+        localStorage.setItem('ai_review_active_repo_path', pathVal);
+        fetch('/api/workspace/preference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'activeRepoPath', value: pathVal })
+        }).catch(() => {});
+      }
       await updateWorkspaceStatus();
     }
+
 
     function toggleLiveConsoleCollapse() {
       const body = document.getElementById('liveConsoleBody');
@@ -1451,10 +1487,13 @@
         closeAddRepoModal();
         document.getElementById('newRepoNameInput').value = '';
         document.getElementById('newRepoPathInput').value = '';
-        if (document.getElementById('newGithubRepoInput')) document.getElementById('newGithubRepoInput').value = '';
         await loadRepositories();
-        alert(`成功添加仓库: ${name}！`);
+        if (pathVal) {
+          await changeActiveRepo(pathVal);
+        }
+        alert(`成功添加仓库并切换至: ${name}！`);
       } catch (err) {
+
         alert('添加失败: ' + err.message);
       }
     }
