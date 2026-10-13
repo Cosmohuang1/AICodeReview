@@ -13,6 +13,7 @@ import { buildPRBody, buildInlineCommentBody } from '../reporter/markdown.report
 import { runDeterministicRules } from '../rules/deterministic.engine.js';
 import { deduplicateComments } from '../filter/deduplicator.js';
 import { anchorComments } from '../parser/position.anchorer.js';
+import { defaultSqliteStorage } from '../storage/sqlite.storage.js';
 
 
 
@@ -133,7 +134,9 @@ function ensureInitialWorkspaceTask(): void {
     } else {
       tasksList.push(workspaceTask);
     }
+    defaultSqliteStorage.saveTask(workspaceTask);
   } catch {
+
     // ignore
   }
 }
@@ -320,11 +323,16 @@ apiRouter.all('/fs/validate-path', (req: Request, res: Response) => {
 
 apiRouter.get('/recents', (_req: Request, res: Response) => {
   ensureInitialWorkspaceTask();
+  const dbTasks = defaultSqliteStorage.listTasks();
+  if (dbTasks.length > 0) {
+    return res.json(dbTasks);
+  }
   res.json(tasksList);
 });
 
 apiRouter.get('/task/:id', (req: Request, res: Response) => {
-  const item = tasksList.find(r => r.id === req.params.id);
+  ensureInitialWorkspaceTask();
+  const item = defaultSqliteStorage.getTask(req.params.id) || tasksList.find(r => r.id === req.params.id);
   if (!item) {
     return res.status(404).json({ error: '未找到指定任务' });
   }
@@ -333,12 +341,14 @@ apiRouter.get('/task/:id', (req: Request, res: Response) => {
 
 apiRouter.post('/task/:id/chat', async (req: Request, res: Response) => {
   const { message } = req.body;
-  const item = tasksList.find(r => r.id === req.params.id);
+  const item = defaultSqliteStorage.getTask(req.params.id) || tasksList.find(r => r.id === req.params.id);
   if (!item) {
     return res.status(404).json({ error: '未找到指定任务' });
   }
 
-  item.chatHistory.push({ role: 'user', text: message, time: '刚刚' });
+  const userMsg = { role: 'user' as const, text: message, time: '刚刚' };
+  item.chatHistory.push(userMsg);
+  defaultSqliteStorage.addChatMessage(item.id, userMsg);
 
   try {
     const prompt = `你是一个类似 CodeRabbit 的自主编程和代码审查 Agent。当前任务上下文：
@@ -352,14 +362,19 @@ apiRouter.post('/task/:id/chat', async (req: Request, res: Response) => {
 请用专业、简洁、有说服力的工程师口吻给出响应，说明你理解了要求，如果需要写代码则提供具体补丁方案，并确认是否需要继续推送到分支。`;
 
     const reply = await callDeepSeek(prompt);
-    item.chatHistory.push({ role: 'agent', text: reply, time: '刚刚' });
+    const agentMsg = { role: 'agent' as const, text: reply, time: '刚刚' };
+    item.chatHistory.push(agentMsg);
+    defaultSqliteStorage.addChatMessage(item.id, agentMsg);
     res.json({ success: true, reply, chatHistory: item.chatHistory });
   } catch (err: any) {
     const fallback = `已收到指令：“${message}”。正在为你准备更新测试与修改补丁，请稍候...`;
-    item.chatHistory.push({ role: 'agent', text: fallback, time: '刚刚' });
+    const agentMsg = { role: 'agent' as const, text: fallback, time: '刚刚' };
+    item.chatHistory.push(agentMsg);
+    defaultSqliteStorage.addChatMessage(item.id, agentMsg);
     res.json({ success: true, reply: fallback, chatHistory: item.chatHistory });
   }
 });
+
 
 apiRouter.post('/task/:id/create-pr', (req: Request, res: Response) => {
   const item = tasksList.find(r => r.id === req.params.id);
@@ -435,7 +450,9 @@ apiRouter.post('/agent/execute', async (req: Request, res: Response) => {
     };
 
     tasksList.unshift(newTaskItem);
+    defaultSqliteStorage.saveTask(newTaskItem);
     res.json({ success: true, task: newTaskItem, id: newTaskItem.id });
+
   } catch (err: any) {
     res.status(500).json({ error: `执行 Coding Agent 失败: ${err.message}` });
   }
@@ -746,7 +763,9 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
       };
 
       tasksList.unshift(newTaskItem);
+      defaultSqliteStorage.saveTask(newTaskItem);
       return res.json({ success: true, task: newTaskItem, id: newTaskItem.id });
+
     } catch (err: any) {
       return res.status(500).json({ error: `执行 Coding Agent 失败: ${err.message}` });
     }
@@ -1014,8 +1033,10 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     };
 
     tasksList.unshift(newTaskItem);
+    defaultSqliteStorage.saveTask(newTaskItem);
 
     res.json({
+
       success: true,
       task: newTaskItem,
       id: newTaskItem.id
