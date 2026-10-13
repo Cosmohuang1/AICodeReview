@@ -373,4 +373,57 @@ describe('runReviewPipeline', () => {
       );
     });
   });
+
+  describe('industrial-grade review enhancements (deterministic rules, deduplication, position anchoring)', () => {
+    it('captures hardcoded secrets via deterministic rules and publishes them anchored', async () => {
+      const secretParsedFile: ParsedFile = {
+        filePath: 'src/secret.ts',
+        language: 'typescript',
+        isNew: false,
+        isDeleted: false,
+        hunks: [
+          {
+            oldStart: 1,
+            newStart: 1,
+            newLines: ['const key = "sk-proj-1234567890abcdef1234567890";'],
+            diffPosition: 2,
+            rawHunk: '+const key = "sk-proj-1234567890abcdef1234567890";',
+          },
+        ],
+      };
+      const secretChunk: CodeChunk = {
+        file: 'src/secret.ts',
+        language: 'typescript',
+        diffContent: '+const key = "sk-proj-1234567890abcdef1234567890";',
+        fullContext: 'const key = "sk-proj-1234567890abcdef1234567890";',
+        startLine: 1,
+        endLine: 1,
+        diffPosition: 2,
+      };
+
+      vi.mocked(parseDiff).mockReturnValue([secretParsedFile]);
+      vi.mocked(chunkFiles).mockReturnValue([secretChunk]);
+      vi.mocked(runOrchestrator).mockResolvedValue([]);
+      // selfCritique passes through
+      vi.mocked(selfCritique).mockImplementation(async (comments) => comments);
+
+      await runReviewPipeline(mockCtx);
+
+      expect(publishReview).toHaveBeenCalledWith(
+        mockCtx,
+        mockSummary,
+        'Initial PR description',
+        expect.arrayContaining([
+          expect.objectContaining({
+            file: 'src/secret.ts',
+            line: 1,
+            category: 'security',
+            severity: 'error',
+            confidence: 1.0,
+          }),
+        ])
+      );
+    });
+  });
 });
+

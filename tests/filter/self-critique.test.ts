@@ -159,4 +159,24 @@ describe('selfCritique', () => {
     expect(result[0].category).toBe('performance');
     expect(result[0].suggestion).toBe('optimize()');
   });
+
+  it('automatically preserves deterministic comments (confidence = 1.0) without sending them to LLM filter', async () => {
+    const deterministicComment: ReviewComment = {
+      file: 'sec.ts',
+      line: 5,
+      side: 'RIGHT',
+      severity: 'error',
+      category: 'security',
+      message: '[API 密钥泄露] 检测到硬编码凭据',
+      confidence: 1.0,
+    };
+    // DeepSeek is only called for probabilistic comments (< 1.0)
+    // If only deterministic comments exist, DeepSeek shouldn't even be called!
+    const config = parseRepoConfig({ selfCritiqueThreshold: 0.8 });
+    const result = await selfCritique([deterministicComment], [mockChunk], config);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(deterministicComment);
+    expect(callDeepSeek).not.toHaveBeenCalled();
+  });
 });
+

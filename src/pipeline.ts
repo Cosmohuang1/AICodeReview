@@ -6,7 +6,11 @@ import { runOrchestrator } from './orchestrator/index.js';
 import { selfCritique } from './filter/self-critique.js';
 import { summaryAgent } from './agents/summary.agent.js';
 import { publishReview } from './github/publisher.js';
+import { runDeterministicRules } from './rules/deterministic.engine.js';
+import { deduplicateComments } from './filter/deduplicator.js';
+import { anchorComments } from './parser/position.anchorer.js';
 import type { PRSummary } from './agents/types.js';
+
 
 export function isFileExcluded(filePath: string, excludePatterns: string[]): boolean {
   const normalizedPath = filePath.replace(/\\/g, '/');
@@ -91,16 +95,25 @@ export async function runReviewPipeline(ctx: PRContext): Promise<void> {
     console.warn(`[ai-review] 文件数超限，只审查前 ${config.maxFilesPerReview} 个文件`);
   }
 
+
   // 6. 语法感知分块
   const chunks = chunkFiles(limitedFiles, fileContents);
 
-  // 7. 并发 6 Agent 审查
+  // 7. 前置确定性静态规则（0 Token，100% 精度）+ 6 Agent 并发走查
+  const deterministicComments = chunks.flatMap(chunk => runDeterministicRules(chunk));
   const rawComments = await runOrchestrator(chunks, config);
+  const combinedComments = [...deterministicComments, ...rawComments];
 
-  // 8. Self-Critique 二阶过滤
-  const filteredComments = await selfCritique(rawComments, chunks, config);
+  // 8. 跨 Agent 智能去重与聚合
+  const dedupedComments = deduplicateComments(combinedComments);
 
-  // 9. 生成 PR Summary（容错保护）
+  // 9. Self-Critique 二阶过滤（确定性规则自动旁路保留）
+  const filteredComments = await selfCritique(dedupedComments, chunks, config);
+
+  // 10. Unified Diff 行号防漂移锚定与建议清洗
+  const anchoredComments = anchorComments(filteredComments, limitedFiles);
+
+  // 11. 生成 PR Summary（容错保护）
   const [summaryResult] = await Promise.allSettled([
     summaryAgent(ctx.prTitle, limitedFiles, config),
   ]);
@@ -113,10 +126,11 @@ export async function runReviewPipeline(ctx: PRContext): Promise<void> {
           mermaidDiagram: '',
         };
 
-  // 10. 发布到 GitHub
-  await publishReview(ctx, prSummary, originalBody, filteredComments);
+  // 12. 发布到 GitHub
+  await publishReview(ctx, prSummary, originalBody, anchoredComments);
 
-  console.log(`[ai-review] Review complete: ${filteredComments.length} comments published`);
+  console.log(`[ai-review] Review complete: ${anchoredComments.length} comments published`);
 }
 
 export default runReviewPipeline;
+

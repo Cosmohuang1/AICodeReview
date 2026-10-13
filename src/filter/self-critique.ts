@@ -9,7 +9,25 @@ export async function selfCritique(
 ): Promise<ReviewComment[]> {
   if (comments.length === 0) return [];
 
-  const codeContext = chunks.slice(0, 3).map(c => c.fullContext).join('\n\n---\n\n');
+  // 1. 分离确定性规则意见（置信度 1.0）与概率性大模型意见
+  // 确定性意见（如硬编码密钥、SQL 注入）已由规则引擎 100% 确认，直接保留，避免大模型误杀与 Token 浪费
+  const deterministicComments = comments.filter(c => c.confidence >= 1.0);
+  const probabilisticComments = comments.filter(c => c.confidence < 1.0);
+
+  if (probabilisticComments.length === 0) {
+    return deterministicComments;
+  }
+
+  // 2. 针对概率性意见，精准匹配对应文件的 Code Chunks 上下文
+  const targetFiles = new Set(probabilisticComments.map(c => c.file));
+  let relevantChunks = chunks.filter(c => targetFiles.has(c.file));
+  if (relevantChunks.length === 0) {
+    relevantChunks = chunks.slice(0, 3);
+  } else if (relevantChunks.length > 5) {
+    relevantChunks = relevantChunks.slice(0, 5);
+  }
+
+  const codeContext = relevantChunks.map(c => c.fullContext).join('\n\n---\n\n');
 
   const prompt = `你是一位严格的代码审查质量控制员。以下是 AI 对代码变更生成的审查建议列表。
 请逐条判断每条建议是否有价值，过滤掉以下低质量建议：
@@ -22,14 +40,14 @@ export async function selfCritique(
 ${codeContext}
 
 【待审核建议列表（JSON）】:
-${JSON.stringify(comments, null, 2)}
+${JSON.stringify(probabilisticComments, null, 2)}
 
 输出过滤后的建议列表（JSON 数组）。保留原始所有字段，将 confidence 字段更新为你的评估分（0-1）。只输出 JSON。`;
 
   try {
     const raw = await callDeepSeek(prompt);
     const filtered = extractJsonArray<Partial<ReviewComment>>(raw);
-    const results: ReviewComment[] = [];
+    const results: ReviewComment[] = [...deterministicComments];
 
     for (const item of filtered) {
       const confidence = typeof item.confidence === 'number' ? item.confidence : 0;
@@ -37,7 +55,7 @@ ${JSON.stringify(comments, null, 2)}
         continue;
       }
 
-      const original = comments.find(
+      const original = probabilisticComments.find(
         c => c.file === item.file && c.line === item.line
       );
 

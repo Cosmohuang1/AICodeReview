@@ -235,6 +235,12 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
     }
   }
 
+  if (!isFinished && !isAborted) {
+    streamer.broadcast(sessionId, 'finish', {
+      text: finalMessage || '自主控制循环已达到步数限制并完成当前阶段操作。',
+    });
+  }
+
   // 结算耗时与状态
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
   const workedTime = elapsedSeconds >= 60

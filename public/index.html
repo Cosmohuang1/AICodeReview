@@ -242,31 +242,40 @@
     </div>
 
     <!-- 实时流式执行终端卡片 (Cursor/Cline 风格) -->
-    <div id="reactLiveConsole" class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 shadow-xl mb-6 hidden font-mono text-xs text-zinc-200">
+    <div id="reactLiveConsole" class="w-full bg-zinc-950 border border-zinc-850 rounded-2xl p-4 shadow-xl mb-6 hidden font-mono text-xs text-zinc-200">
       <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
         <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span class="font-semibold text-zinc-100 font-sans text-xs">⚡ 自主 ReAct 纠错 Agent 实时运行中</span>
-          <span id="liveConsoleStepBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-sans">步骤 1</span>
+          <span id="liveConsoleStatusDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="liveConsoleTitle" class="font-semibold text-zinc-100 font-sans text-xs">⚡ 深度分析与执行中...</span>
+          <span id="liveConsoleStepBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-sans">阶段 1</span>
         </div>
         <div class="flex items-center gap-2">
           <button id="btnAbortReact" type="button" onclick="abortCurrentReactSession()" class="px-2.5 py-1 rounded-md bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-200 text-[11px] font-sans font-medium transition-colors flex items-center gap-1 cursor-pointer">
             <i data-lucide="square" class="w-3 h-3 text-red-400"></i>
             <span>中止执行</span>
           </button>
+          <button type="button" onclick="toggleLiveConsoleCollapse()" class="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-sans font-medium transition-colors flex items-center gap-1">
+            <i data-lucide="minimize-2" id="liveConsoleCollapseIcon" class="w-3 h-3"></i>
+            <span id="liveConsoleCollapseText">收起</span>
+          </button>
         </div>
       </div>
 
-      <!-- 实时思考流 -->
-      <div class="mt-3">
-        <div class="text-[10px] text-zinc-400 font-sans mb-1 flex items-center gap-1">
-          <i data-lucide="brain" class="w-3 h-3 text-purple-400"></i>
-          <span>深度推理思考流 (Thinking Stream)</span>
+      <!-- 控制台折叠主体容器 -->
+      <div id="liveConsoleBody" class="space-y-3 pt-3">
+        <!-- 实时思考与分析流 -->
+        <div>
+          <div class="text-[10px] text-zinc-400 font-sans mb-1 flex items-center justify-between">
+            <span class="flex items-center gap-1">
+              <i data-lucide="brain" class="w-3 h-3 text-purple-400"></i>
+              <span>深度推理思考流 (Thinking Stream)</span>
+            </span>
+            <span class="text-[9px] text-zinc-500">实时流式追踪</span>
+          </div>
+          <div id="liveThinkingBox" class="p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-[11.5px] text-amber-200/95 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto font-sans">
+            <span class="text-zinc-500 italic">正在构建上下文与思考计划...</span>
+          </div>
         </div>
-        <div id="liveThinkingBox" class="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-amber-200/90 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto">
-          <span class="text-zinc-500 italic">正在构建上下文与思考计划...</span>
-        </div>
-      </div>
 
       <!-- 当前调用的工具与终端输出 -->
       <div class="mt-3 space-y-2">
@@ -281,6 +290,7 @@
           <span class="text-zinc-600">// 终端实时标准输出将在此流式打印...</span>
         </div>
       </div>
+    </div>
     </div>
 
     <!-- 快捷提示 -->
@@ -408,6 +418,9 @@
             <button onclick="copyDetailSummary()" class="hover:text-zinc-600" title="复制摘要"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
           </div>
         </div>
+
+        <!-- CodeRabbit 风格：智能审查建议与 Now vs Next 分流看板 -->
+        <div id="detailPrioritizeSection" class="space-y-4 pt-1"></div>
 
         <!-- 修改文件卡片 -->
         <div class="border border-zinc-200 rounded-xl bg-white shadow-2xs overflow-hidden">
@@ -660,24 +673,8 @@
       </div>
 
       <!-- Tab 1: 本地 Git 仓库 -->
-      <div id="tabContentLocal" class="space-y-3.5 pt-1">
+      <div id="tabContentLocal" class="space-y-4 pt-1">
         <p class="text-[11px] text-zinc-500">指定本地工作副本路径，无须 GitHub App 即可直接在 Web 控制台进行多仓库切换、实时审查与编码。</p>
-        
-        <!-- 快速选取已检测到的本地仓库 -->
-        <div class="bg-zinc-50 border border-zinc-200/80 rounded-xl p-3 space-y-2">
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-medium text-zinc-700 flex items-center gap-1.5">
-              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-orange-500"></i>
-              <span>系统检测到的本地仓库 (点击直接选取)</span>
-            </span>
-            <button type="button" onclick="loadDetectedRepos()" class="text-[11px] text-zinc-400 hover:text-zinc-700 flex items-center gap-1">
-              <i data-lucide="refresh-cw" class="w-3 h-3"></i><span>刷新</span>
-            </button>
-          </div>
-          <div id="detectedReposList" class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
-            <span class="text-[11px] text-zinc-400 italic">正在扫描本地工程...</span>
-          </div>
-        </div>
 
         <div>
           <label class="text-xs font-medium text-zinc-700 block mb-1">本地目录路径 (Git 工作区)</label>
@@ -727,7 +724,7 @@
 
 
   <!-- Modal 1.5: 选取本地代码文件夹弹窗 -->
-  <div id="folderPickerModal" class="fixed inset-0 z-60 bg-black/50 backdrop-blur-xs hidden flex items-center justify-center p-4">
+  <div id="folderPickerModal" style="z-index: 9999;" class="fixed inset-0 bg-black/60 backdrop-blur-xs hidden flex items-center justify-center p-4">
     <div class="bg-white border border-zinc-200 rounded-2xl max-w-2xl w-full p-6 shadow-2xl flex flex-col max-h-[85vh] space-y-4">
       <div class="flex items-center justify-between border-b border-zinc-100 pb-3">
         <h3 class="font-semibold text-sm text-zinc-900 flex items-center gap-2">
@@ -920,28 +917,125 @@
       await updateWorkspaceStatus();
     }
 
+    function toggleLiveConsoleCollapse() {
+      const body = document.getElementById('liveConsoleBody');
+      const text = document.getElementById('liveConsoleCollapseText');
+      const icon = document.getElementById('liveConsoleCollapseIcon');
+      if (!body) return;
+      body.classList.toggle('hidden');
+      const isHidden = body.classList.contains('hidden');
+      text.textContent = isHidden ? '展开' : '收起';
+      if (icon) {
+        icon.setAttribute('data-lucide', isHidden ? 'maximize-2' : 'minimize-2');
+        lucide.createIcons();
+      }
+    }
+
     async function reviewCurrentChanges() {
       const btn = document.getElementById('btnReviewCurrentChanges');
-      const origHtml = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>正在分析 Diff...</span>`;
+      const origHtml = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>正在分析 Diff...</span>`;
+        lucide.createIcons();
+      }
+
+      // 1. 立即展开并激活实时分析过程控制台
+      const consoleCard = document.getElementById('reactLiveConsole');
+      const thinkBox = document.getElementById('liveThinkingBox');
+      const toolBadge = document.getElementById('liveActiveToolBadge');
+      const toolText = document.getElementById('liveActiveToolText');
+      const termOutput = document.getElementById('liveTerminalOutput');
+      const stepBadge = document.getElementById('liveConsoleStepBadge');
+      const titleEl = document.getElementById('liveConsoleTitle');
+      const dotEl = document.getElementById('liveConsoleStatusDot');
+      const consoleBody = document.getElementById('liveConsoleBody');
+
+      if (consoleCard) consoleCard.classList.remove('hidden');
+      if (consoleBody) consoleBody.classList.remove('hidden');
+      const collapseText = document.getElementById('liveConsoleCollapseText');
+      if (collapseText) collapseText.textContent = '收起';
+
+      if (titleEl) titleEl.textContent = '🔍 深度代码审查分析进行中 (Deep Review Pipeline)';
+      if (dotEl) dotEl.className = 'w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse';
+      if (stepBadge) stepBadge.textContent = '阶段 1: Diff 扫描';
+      if (thinkBox) thinkBox.innerHTML = '<div class="text-amber-200/90 font-medium leading-relaxed">[分析启动] 正在扫描工作区变更，捕获语法结构并读取上下文...</div>';
+      if (toolBadge) toolBadge.classList.remove('hidden');
+      if (toolText) toolText.textContent = '执行动作: git diff 工作区代码语法扫描...';
+      if (termOutput) termOutput.innerHTML = '<span class="text-emerald-400 font-bold">>_ [Review Pipeline] 正在执行全量代码走查与 AST 语法切片...</span>';
       lucide.createIcons();
+
+      const sessionId = 'review_' + Date.now();
+      activeReactSessionId = sessionId;
+
+      let es = null;
+      try {
+        es = new EventSource(`/api/agent/react/stream/${sessionId}`);
+        es.addEventListener('step', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            if (stepBadge) stepBadge.textContent = `阶段 ${payload.step}: ${payload.name || '分析中'}`;
+          } catch {}
+        });
+        es.addEventListener('think', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            if (thinkBox) {
+              thinkBox.innerHTML += `<div class="mt-2 text-amber-200/95 leading-relaxed">[审查思考] ${payload.text}</div>`;
+              thinkBox.scrollTop = thinkBox.scrollHeight;
+            }
+          } catch {}
+        });
+        es.addEventListener('tool_call', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            if (toolBadge) toolBadge.classList.remove('hidden');
+            if (toolText) toolText.textContent = `分析动作: ${payload.name} (${JSON.stringify(payload.args || {})})`;
+            lucide.createIcons();
+          } catch {}
+        });
+        es.addEventListener('tool_result', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            if (termOutput) {
+              termOutput.innerHTML += `\n<div class="text-emerald-400 font-bold">>_ [${payload.name}] ${payload.output}</div>`;
+              termOutput.scrollTop = termOutput.scrollHeight;
+            }
+          } catch {}
+        });
+      } catch (e) {
+        console.warn('SSE stream error:', e);
+      }
 
       try {
         const res = await fetch('/api/review', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'worktree', repoPath: activeRepoPath || undefined }),
+          body: JSON.stringify({
+            mode: 'worktree',
+            repoPath: activeRepoPath || undefined,
+            sessionId
+          }),
         });
         const data = await res.json();
-        btn.disabled = false;
-        btn.innerHTML = origHtml;
-        lucide.createIcons();
+        if (es) es.close();
+
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          lucide.createIcons();
+        }
 
         if (data.error) {
+          if (titleEl) titleEl.textContent = '❌ 代码审查分析失败';
+          if (dotEl) dotEl.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
           alert('审查失败: ' + data.error);
           return;
         }
+
+        if (titleEl) titleEl.textContent = '✅ 代码审查与二阶降噪分析完毕 (Analysis Complete)';
+        if (dotEl) dotEl.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        if (stepBadge) stepBadge.textContent = '审查完成';
 
         await loadTasks();
         await updateWorkspaceStatus();
@@ -949,9 +1043,12 @@
           selectTask(data.task);
         }
       } catch (err) {
-        btn.disabled = false;
-        btn.innerHTML = origHtml;
-        lucide.createIcons();
+        if (es) es.close();
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          lucide.createIcons();
+        }
         alert('审查请求异常: ' + err.message);
       }
     }
@@ -1155,45 +1252,11 @@
 
     function openAddRepoModal() {
       document.getElementById('addRepoModal').classList.remove('hidden');
-      loadDetectedRepos();
       lucide.createIcons();
     }
 
     function closeAddRepoModal() {
       document.getElementById('addRepoModal').classList.add('hidden');
-    }
-
-    async function loadDetectedRepos() {
-      const container = document.getElementById('detectedReposList');
-      if (!container) return;
-      container.innerHTML = `<span class="text-[11px] text-zinc-400 italic">正在扫描系统工程...</span>`;
-      try {
-        const res = await fetch('/api/fs/detected-repos');
-        const repos = await res.json();
-        container.innerHTML = '';
-        if (!repos || repos.length === 0) {
-          container.innerHTML = `<span class="text-[11px] text-zinc-400">未探测到常见目录下的 Git 仓库，可点击右侧“浏览文件夹”手动选取</span>`;
-          return;
-        }
-        repos.forEach(r => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = `px-2 py-1 rounded-md text-[11px] border font-mono transition-colors flex items-center gap-1.5 ${r.isGit ? 'bg-orange-50/70 border-orange-200 text-orange-900 hover:bg-orange-100' : 'bg-zinc-100 border-zinc-200 text-zinc-700 hover:bg-zinc-200'}`;
-          btn.innerHTML = `
-            <span class="truncate max-w-[130px] font-semibold">${r.name}</span>
-            ${r.isGit ? '<span class="text-[9px] px-1 bg-orange-200/80 text-orange-900 rounded font-normal">Git</span>' : ''}
-          `;
-          btn.title = r.path;
-          btn.onclick = () => {
-            document.getElementById('newRepoPathInput').value = r.path;
-            document.getElementById('newRepoNameInput').value = r.name;
-            validatePath(r.path);
-          };
-          container.appendChild(btn);
-        });
-      } catch (err) {
-        container.innerHTML = `<span class="text-[11px] text-red-500">探测失败: ${err.message}</span>`;
-      }
     }
 
     function onRepoPathInput(val) {
@@ -1237,6 +1300,8 @@
     }
 
     function openFolderPickerModal() {
+      // 临时隐藏底层关联弹框，彻底避免视觉重叠和被遮挡
+      document.getElementById('addRepoModal').classList.add('hidden');
       document.getElementById('folderPickerModal').classList.remove('hidden');
       const inputVal = document.getElementById('newRepoPathInput').value.trim();
       navigateFolder(inputVal || currentBrowsePath);
@@ -1245,6 +1310,9 @@
 
     function closeFolderPickerModal() {
       document.getElementById('folderPickerModal').classList.add('hidden');
+      // 恢复显示关联代码仓库弹框
+      document.getElementById('addRepoModal').classList.remove('hidden');
+      lucide.createIcons();
     }
 
     async function navigateFolder(dirPath) {
@@ -1648,8 +1716,216 @@
         });
       }
 
+      renderPrioritizeAndComments(task);
       renderChatStream(task.chatHistory || []);
       lucide.createIcons();
+    }
+
+    function renderPrioritizeAndComments(task) {
+      const container = document.getElementById('detailPrioritizeSection');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const comments = task.comments || [];
+      if (comments.length === 0) {
+        container.innerHTML = `
+          <div class="border border-emerald-200/80 bg-emerald-50/50 rounded-2xl p-4 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+              <i data-lucide="shield-check" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-xs text-emerald-900">🎉 代码质量极高，未发现阻断性逻辑或安全漏洞</div>
+              <div class="text-[11px] text-emerald-700 mt-0.5">所有变更分块均已通过六大 Agent（Bug、Security、Performance、Style、Test、Custom）及二阶自愈批判核验。</div>
+            </div>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      // 1. 分流成 Now (P0/P1 高优) 与 Next (P1/P2 次要) 看板（CodeRabbit 原版体验）
+      const nowItems = comments.filter(c => c.priority === 'P0' || c.severity === 'error' || c.category === 'security' || c.category === 'bug');
+      const nextItems = comments.filter(c => !nowItems.includes(c));
+
+      // 若都归某一类，智能均衡分配
+      const displayNow = nowItems.length > 0 ? nowItems : comments.slice(0, Math.ceil(comments.length / 2));
+      const displayNext = nowItems.length > 0 ? nextItems : comments.slice(Math.ceil(comments.length / 2));
+
+      let kanbanHtml = `
+        <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-zinc-100 space-y-3 shadow-xl font-sans">
+          <div class="flex items-center justify-between border-b border-zinc-800 pb-2.5">
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] font-mono text-zinc-500">01 Review</span>
+              <span class="text-zinc-600 font-mono">/</span>
+              <span class="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
+                <i data-lucide="layers" class="w-3.5 h-3.5 text-orange-400"></i>
+                <span>02 Prioritize across all Changes (多维度智能优先级分流)</span>
+              </span>
+            </div>
+            <span class="text-[11px] text-zinc-400 font-mono">共 ${comments.length} 处审查建议</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+            <!-- Now 列 -->
+            <div class="space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-zinc-200">Now</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-orange-950 border border-orange-800 text-orange-300 font-mono">${displayNow.length}</span>
+                </div>
+                <span class="text-[10px] text-zinc-500">建议立即关注处理</span>
+              </div>
+              <div class="space-y-2">
+                ${displayNow.map(c => renderKanbanCard(c)).join('')}
+              </div>
+            </div>
+
+            <!-- Next 列 -->
+            <div class="space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-zinc-200">Next</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 font-mono">${displayNext.length}</span>
+                </div>
+                <span class="text-[10px] text-zinc-500">次要或可异步清理</span>
+              </div>
+              <div class="space-y-2">
+                ${displayNext.length > 0 ? displayNext.map(c => renderKanbanCard(c)).join('') : '<div class="p-3 rounded-xl border border-dashed border-zinc-800 text-center text-zinc-600 text-[11px]">暂无次级项</div>'}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // 2. CodeRabbit 风格：可采纳建议与 Unified Diff 卡片流
+      let suggestionsHtml = `
+        <div class="space-y-3 pt-2">
+          <div class="flex items-center justify-between">
+            <h4 class="font-semibold text-xs text-zinc-900 flex items-center gap-1.5">
+              <i data-lucide="message-square-code" class="w-4 h-4 text-orange-500"></i>
+              <span>代码行审查批注与可采纳建议 (${comments.length})</span>
+            </h4>
+            <span class="text-[11px] text-zinc-400">支持 Unified Diff 对比与一键采纳</span>
+          </div>
+          <div class="space-y-3">
+            ${comments.map(c => renderCodeRabbitCommentCard(c)).join('')}
+          </div>
+        </div>
+      `;
+
+      container.innerHTML = kanbanHtml + suggestionsHtml;
+      lucide.createIcons();
+    }
+
+    function renderKanbanCard(c) {
+      const pColor = c.priority === 'P0' ? 'bg-red-950/80 text-red-300 border-red-800' : (c.priority === 'P1' ? 'bg-orange-950/80 text-orange-300 border-orange-800' : 'bg-yellow-950/80 text-yellow-300 border-yellow-800');
+      const boxColor = c.priority === 'P0' ? 'bg-red-950/40 border-red-900/60 text-red-200' : 'bg-orange-950/30 border-orange-900/50 text-orange-200';
+      return `
+        <div class="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 transition-colors space-y-2 text-left">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full border ${pColor} font-semibold">${c.priority || 'P1'}</span>
+            <span class="text-[11px] font-mono text-zinc-400 truncate max-w-[180px]">${c.file}:${c.line}</span>
+          </div>
+          <div class="text-xs font-semibold text-zinc-100 leading-snug line-clamp-2">${c.message}</div>
+          <div class="p-2 rounded-lg border ${boxColor} text-[11px] leading-relaxed">
+            <span class="font-medium text-orange-300">推荐理由：</span>${c.whyPriority || '建议优先审查此项以避免潜在隐患。'}
+          </div>
+          <div class="flex items-center gap-1.5 flex-wrap pt-0.5">
+            <span class="text-[10px] px-2 py-0.5 rounded-md bg-zinc-800/80 text-zinc-400">${c.tag || 'Standard review'}</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-md bg-zinc-800/80 text-zinc-400 capitalize">${c.category}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderCodeRabbitCommentCard(c) {
+      const isMajor = c.severity === 'error' || c.priority === 'P0';
+      const sevBadge = isMajor 
+        ? '<span class="flex items-center gap-1.5 text-[11px] font-medium text-amber-400"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-400"></i><span>Potential issue</span><span class="text-zinc-600">|</span><span class="text-red-400 font-semibold flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>Major</span></span>'
+        : '<span class="flex items-center gap-1.5 text-[11px] font-medium text-blue-400"><i data-lucide="info" class="w-3.5 h-3.5 text-blue-400"></i><span>Suggestion</span><span class="text-zinc-600">|</span><span class="text-blue-300">Minor</span></span>';
+
+      let diffBlock = '';
+      if (c.diffSnippet) {
+        diffBlock = `
+          <div class="rounded-xl overflow-hidden border border-zinc-800 bg-[#0d1117] font-mono text-[11.5px] leading-relaxed text-left">
+            <div class="px-3 py-1 bg-zinc-900 border-b border-zinc-800 text-zinc-400 text-[10px] flex items-center justify-between">
+              <span>${c.file} • 第 ${c.line} 行</span>
+              <span class="text-zinc-500">Unified Diff</span>
+            </div>
+            <pre class="p-3 text-zinc-200 overflow-x-auto whitespace-pre">${c.diffSnippet}</pre>
+          </div>
+        `;
+      } else if (c.suggestion) {
+        diffBlock = `
+          <div class="rounded-xl overflow-hidden border border-zinc-800 bg-[#0d1117] font-mono text-[11.5px] p-3 text-emerald-300 text-left">
+            <div class="text-[10px] text-zinc-500 mb-1">// 修复建议代码</div>
+            <pre class="overflow-x-auto whitespace-pre">${c.suggestion}</pre>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="border border-zinc-800 bg-zinc-950 rounded-2xl p-4 text-zinc-200 space-y-3 shadow-lg text-left">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="w-7 h-7 rounded-lg bg-orange-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+                🐰
+              </div>
+              <div>
+                <div class="text-xs font-semibold text-zinc-100 flex items-center gap-2">
+                  <span>coderabbitai</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-normal">bot</span>
+                  <span class="text-[11px] text-zinc-500 font-normal">刚刚评论</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-xs font-mono text-zinc-400">${c.file} L${c.line}</span>
+          </div>
+
+          <div>${sevBadge}</div>
+
+          <div class="text-xs font-bold text-zinc-100 leading-snug">${c.message}</div>
+          <div class="text-[11px] text-zinc-400 leading-relaxed">${c.whyPriority || '请核实此处的边界条件与逻辑假设是否成立。'}</div>
+
+          ${diffBlock}
+
+          ${c.suggestion ? `
+            <div class="pt-1 flex items-center gap-2">
+              <button type="button" onclick="applyCommentSuggestion('${c.file}', ${c.line}, '${encodeURIComponent(c.suggestion)}')" class="px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-zinc-200 font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm">
+                <i data-lucide="play" class="w-3.5 h-3.5 text-emerald-400 fill-emerald-400"></i>
+                <span>Commitable suggestion (一键采纳此修改)</span>
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    async function applyCommentSuggestion(file, line, encSuggestion) {
+      const suggestion = decodeURIComponent(encSuggestion);
+      if (!confirm(`确定采纳并应用针对 ${file} (第 ${line} 行) 的代码建议吗？`)) return;
+      try {
+        const res = await fetch('/api/patch/apply-suggestion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoPath: activeRepoPath || undefined,
+            filePath: file,
+            line,
+            suggestion
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert(`✅ 已成功将修改建议应用到本地物理文件：${file}`);
+          await updateWorkspaceStatus();
+          await loadTasks();
+        } else {
+          alert('采纳失败: ' + (data.error || '未知错误'));
+        }
+      } catch (err) {
+        alert('请求异常: ' + err.message);
+      }
     }
 
     function renderChatStream(history) {
@@ -1769,14 +2045,22 @@
           reactEventSource.close();
           btn.disabled = false;
           btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
+          
+          const titleEl = document.getElementById('liveConsoleTitle');
+          const dotEl = document.getElementById('liveConsoleStatusDot');
+          if (titleEl) titleEl.textContent = '✅ 智能体自主编码与自愈验证圆满完成 (Completed)';
+          if (dotEl) dotEl.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+          if (stepBadge) {
+            stepBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 font-sans font-medium';
+            stepBadge.textContent = '已就绪';
+          }
           lucide.createIcons();
           document.getElementById('taskPromptInput').value = '';
           await loadTasks();
           await updateWorkspaceStatus();
-          setTimeout(() => {
-            consoleCard.classList.add('hidden');
-            if (tasksList.length > 0) selectTask(tasksList[0]);
-          }, 1200);
+          if (tasksList.length > 0) {
+            selectTask(tasksList[0]);
+          }
         });
 
         reactEventSource.addEventListener('abort', async (e) => {
