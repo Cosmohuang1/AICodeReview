@@ -241,6 +241,48 @@
       </div>
     </div>
 
+    <!-- 实时流式执行终端卡片 (Cursor/Cline 风格) -->
+    <div id="reactLiveConsole" class="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 shadow-xl mb-6 hidden font-mono text-xs text-zinc-200">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="font-semibold text-zinc-100 font-sans text-xs">⚡ 自主 ReAct 纠错 Agent 实时运行中</span>
+          <span id="liveConsoleStepBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-sans">步骤 1</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnAbortReact" type="button" onclick="abortCurrentReactSession()" class="px-2.5 py-1 rounded-md bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-200 text-[11px] font-sans font-medium transition-colors flex items-center gap-1 cursor-pointer">
+            <i data-lucide="square" class="w-3 h-3 text-red-400"></i>
+            <span>中止执行</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 实时思考流 -->
+      <div class="mt-3">
+        <div class="text-[10px] text-zinc-400 font-sans mb-1 flex items-center gap-1">
+          <i data-lucide="brain" class="w-3 h-3 text-purple-400"></i>
+          <span>深度推理思考流 (Thinking Stream)</span>
+        </div>
+        <div id="liveThinkingBox" class="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-amber-200/90 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto">
+          <span class="text-zinc-500 italic">正在构建上下文与思考计划...</span>
+        </div>
+      </div>
+
+      <!-- 当前调用的工具与终端输出 -->
+      <div class="mt-3 space-y-2">
+        <div class="flex items-center justify-between">
+          <div id="liveActiveToolBadge" class="hidden flex items-center gap-2 text-[11px] text-zinc-300 font-sans">
+            <i data-lucide="loader-2" class="w-3 h-3 animate-spin text-orange-400"></i>
+            <span id="liveActiveToolText">正在调用工具...</span>
+          </div>
+          <span class="text-[10px] text-zinc-500 font-sans">真实操作系统反馈 (Grounding)</span>
+        </div>
+        <div id="liveTerminalOutput" class="p-3 rounded-lg bg-black border border-zinc-800 font-mono text-[11px] text-emerald-400 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+          <span class="text-zinc-600">// 终端实时标准输出将在此流式打印...</span>
+        </div>
+      </div>
+    </div>
+
     <!-- 快捷提示 -->
     <div class="flex items-center gap-2 text-xs text-zinc-500 mb-6 flex-wrap justify-center">
       <span>快捷指令：</span>
@@ -1626,39 +1668,143 @@
       });
     }
 
+    let activeReactSessionId = null;
+    let reactEventSource = null;
+
+    async function abortCurrentReactSession() {
+      if (!activeReactSessionId) return;
+      try {
+        await fetch(`/api/agent/react/abort/${activeReactSessionId}`, { method: 'POST' });
+        const badge = document.getElementById('liveConsoleStepBadge');
+        if (badge) badge.textContent = '已发送中止请求...';
+      } catch (err) {
+        console.error('Failed to abort:', err);
+      }
+    }
+
+    async function executePromptWithReact(prompt) {
+      const consoleCard = document.getElementById('reactLiveConsole');
+      const thinkBox = document.getElementById('liveThinkingBox');
+      const toolBadge = document.getElementById('liveActiveToolBadge');
+      const toolText = document.getElementById('liveActiveToolText');
+      const termOutput = document.getElementById('liveTerminalOutput');
+      const stepBadge = document.getElementById('liveConsoleStepBadge');
+      const btn = document.getElementById('btnExecutePrompt');
+
+      consoleCard.classList.remove('hidden');
+      thinkBox.innerHTML = '<span class="text-zinc-500 italic">正在构建上下文与思考计划...</span>';
+      toolBadge.classList.add('hidden');
+      termOutput.innerHTML = '<span class="text-zinc-600">// 终端实时标准输出将在此流式打印...</span>';
+      stepBadge.textContent = '步骤 1';
+
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>`;
+      lucide.createIcons();
+
+      try {
+        const res = await fetch('/api/agent/react/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            repoPath: activeRepoPath || undefined,
+            autoCommit: true,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          alert('启动 ReAct 任务失败: ' + data.error);
+          btn.disabled = false;
+          btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
+          consoleCard.classList.add('hidden');
+          lucide.createIcons();
+          return;
+        }
+
+        activeReactSessionId = data.sessionId;
+
+        if (reactEventSource) {
+          reactEventSource.close();
+        }
+
+        reactEventSource = new EventSource(`/api/agent/react/stream/${activeReactSessionId}`);
+
+        reactEventSource.addEventListener('think', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            if (thinkBox.innerHTML.includes('正在构建上下文')) thinkBox.innerHTML = '';
+            thinkBox.innerHTML += `<div class="mb-1 text-amber-200">[思考] ${payload.text}</div>`;
+            thinkBox.scrollTop = thinkBox.scrollHeight;
+          } catch {}
+        });
+
+        reactEventSource.addEventListener('tool_call', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            toolBadge.classList.remove('hidden');
+            toolText.textContent = `执行动作: ${payload.name} (${JSON.stringify(payload.args)})`;
+            lucide.createIcons();
+          } catch {}
+        });
+
+        reactEventSource.addEventListener('tool_result', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            toolBadge.classList.add('hidden');
+            if (termOutput.innerHTML.includes('// 终端实时标准输出')) termOutput.innerHTML = '';
+            termOutput.innerHTML += `\n<div class="text-emerald-400 font-bold">>_ [${payload.name}] ${payload.success ? '✓ 成功' : '✗ 失败'}</div>`;
+            termOutput.innerHTML += `<div class="text-zinc-300 pl-2 whitespace-pre-wrap">${payload.output || ''}</div>`;
+            termOutput.scrollTop = termOutput.scrollHeight;
+          } catch {}
+        });
+
+        reactEventSource.addEventListener('step', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            stepBadge.textContent = `步骤 ${payload.step}`;
+          } catch {}
+        });
+
+        reactEventSource.addEventListener('finish', async (e) => {
+          reactEventSource.close();
+          btn.disabled = false;
+          btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
+          lucide.createIcons();
+          document.getElementById('taskPromptInput').value = '';
+          await loadTasks();
+          await updateWorkspaceStatus();
+          setTimeout(() => {
+            consoleCard.classList.add('hidden');
+            if (tasksList.length > 0) selectTask(tasksList[0]);
+          }, 1200);
+        });
+
+        reactEventSource.addEventListener('abort', async (e) => {
+          reactEventSource.close();
+          btn.disabled = false;
+          btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
+          lucide.createIcons();
+          stepBadge.textContent = '已中止';
+          await loadTasks();
+          await updateWorkspaceStatus();
+        });
+
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
+        consoleCard.classList.add('hidden');
+        lucide.createIcons();
+        alert('请求异常: ' + err.message);
+      }
+    }
+
     document.getElementById('btnExecutePrompt').addEventListener('click', async () => {
       const prompt = document.getElementById('taskPromptInput').value.trim();
       if (!prompt) {
         alert('请输入编程指令或需求描述！');
         return;
       }
-      const btn = document.getElementById('btnExecutePrompt');
-      btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>`;
-      lucide.createIcons();
-
-      try {
-        const res = await fetch('/api/agent/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, runTests: true, autoCommit: true, repoPath: activeRepoPath || undefined }),
-        });
-        const data = await res.json();
-        btn.disabled = false;
-        btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
-        lucide.createIcons();
-
-        if (data.error) return alert('执行失败: ' + data.error);
-
-        document.getElementById('taskPromptInput').value = '';
-        await loadTasks();
-        await updateWorkspaceStatus();
-        if (data.task) selectTask(data.task);
-      } catch (err) {
-        btn.disabled = false;
-        btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
-        lucide.createIcons();
-        alert('网络请求异常: ' + err.message);
+      await executePromptWithReact(prompt);
     });
 
     document.getElementById('btnSendFollowUp').addEventListener('click', async () => {
