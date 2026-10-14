@@ -267,10 +267,40 @@
             </div>
           </div>
 
-          <!-- 2. [🌿 {branch}] Git 分支胶囊 -->
-          <div id="branchPill" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-200/90 bg-white text-xs font-mono font-medium text-zinc-700 shadow-2xs select-none" title="当前 Git 分支">
-            <i data-lucide="git-branch" class="w-3.5 h-3.5 text-zinc-500"></i>
-            <span id="currentWorkspaceBranch">main</span>
+          <!-- 2. [🌿 {branch}] Git 分支胶囊 (点击切换分支或创建新分支) -->
+          <div class="relative">
+            <button id="btnBranchPill" type="button" onclick="toggleBranchDropdown(event)" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-200/90 hover:border-zinc-300 bg-white hover:bg-zinc-50 text-xs font-mono font-medium text-zinc-800 shadow-2xs transition-colors cursor-pointer select-none" title="点击切换或新建 Git 分支">
+              <i data-lucide="git-branch" class="w-3.5 h-3.5 text-zinc-500"></i>
+              <span id="currentWorkspaceBranch" class="max-w-[100px] sm:max-w-[140px] truncate">main</span>
+              <i data-lucide="chevron-down" class="w-3 h-3 text-zinc-400"></i>
+            </button>
+
+            <!-- 浮动秒切分支下拉面板 -->
+            <div id="branchPillDropdown" class="absolute right-0 bottom-full mb-2 w-72 bg-white border border-zinc-200 rounded-xl shadow-xl p-2.5 hidden z-50 text-xs text-left">
+              <div class="px-1 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center justify-between border-b border-zinc-100 pb-1.5 mb-2">
+                <span>切换 Git 分支</span>
+                <span id="branchCountLabel" class="text-[10px] text-zinc-400 font-mono">0 个分支</span>
+              </div>
+
+              <!-- 搜索分支输入框 -->
+              <div class="relative mb-2">
+                <i data-lucide="search" class="w-3 h-3 text-zinc-400 absolute left-2 top-2"></i>
+                <input type="text" id="branchSearchInput" oninput="filterBranchList()" placeholder="搜索或输入新分支名..." class="w-full bg-zinc-50 border border-zinc-200 rounded-lg pl-7 pr-2 py-1 text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-zinc-400">
+              </div>
+
+              <!-- 分支列表 -->
+              <div id="branchPillList" class="space-y-0.5 max-h-48 overflow-y-auto">
+                <!-- 动态填充分支 -->
+              </div>
+
+              <!-- 新建并检出分支快捷入口 -->
+              <div class="pt-2 mt-2 border-t border-zinc-100">
+                <button type="button" onclick="promptCreateNewBranch()" class="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-medium transition-colors cursor-pointer">
+                  <i data-lucide="git-branch-plus" class="w-3.5 h-3.5 text-orange-500"></i>
+                  <span>创建并切换到新分支...</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <!-- 语音/辅助输入图标 -->
@@ -927,6 +957,7 @@
 
       await loadRepositories();
       await updateWorkspaceStatus();
+      await loadBranches();
       await loadTasks();
       await loadAnalytics();
 
@@ -983,6 +1014,193 @@
       } catch (err) {
         console.error('Failed to update workspace status:', err);
       }
+    }
+
+    // ==================== 分支管理与快速切换 ====================
+    let currentBranches = [];
+
+    async function loadBranches() {
+      try {
+        const url = activeRepoPath
+          ? `/api/git/branches?repoPath=${encodeURIComponent(activeRepoPath)}`
+          : '/api/git/branches';
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.success) return;
+
+        currentBranches = data.branches || [];
+        const current = data.current || 'main';
+
+        const branchEl = document.getElementById('currentWorkspaceBranch');
+        if (branchEl) branchEl.textContent = current;
+
+        const countEl = document.getElementById('branchCountLabel');
+        if (countEl) countEl.textContent = `${currentBranches.length} 个本地分支`;
+
+        renderBranchList(currentBranches, current);
+      } catch (err) {
+        console.error('Failed to load branches:', err);
+      }
+    }
+
+    function renderBranchList(branches, current) {
+      const listEl = document.getElementById('branchPillList');
+      if (!listEl) return;
+      listEl.innerHTML = '';
+
+      if (branches.length === 0) {
+        listEl.innerHTML = '<div class="p-2 text-zinc-400 text-center text-xs">无可用本地分支</div>';
+        return;
+      }
+
+      branches.forEach(b => {
+        const isCurrent = b === current;
+        const row = document.createElement('div');
+        row.className = `flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${isCurrent ? 'bg-orange-50 text-orange-900 font-semibold' : 'text-zinc-700 hover:bg-zinc-100'}`;
+        row.innerHTML = `
+          <div class="flex items-center gap-2 truncate">
+            <i data-lucide="git-branch" class="w-3.5 h-3.5 ${isCurrent ? 'text-orange-500' : 'text-zinc-400'} shrink-0"></i>
+            <span class="truncate font-mono text-xs">${b}</span>
+          </div>
+          ${isCurrent ? '<i data-lucide="check" class="w-3.5 h-3.5 text-orange-600 shrink-0"></i>' : ''}
+        `;
+        row.onclick = async (e) => {
+          e.stopPropagation();
+          closeBranchDropdown();
+          await switchBranch(b);
+        };
+        listEl.appendChild(row);
+      });
+      lucide.createIcons();
+    }
+
+    function filterBranchList() {
+      const q = (document.getElementById('branchSearchInput')?.value || '').toLowerCase().trim();
+      const current = document.getElementById('currentWorkspaceBranch')?.textContent || 'main';
+      const filtered = currentBranches.filter(b => b.toLowerCase().includes(q));
+      renderBranchList(filtered, current);
+    }
+
+    async function switchBranch(branchName) {
+      const current = document.getElementById('currentWorkspaceBranch')?.textContent || '';
+      if (branchName === current) return;
+
+      const btn = document.getElementById('btnBranchPill');
+      const origHtml = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin text-orange-500"></i><span class="font-mono text-xs">${branchName}</span>`;
+        lucide.createIcons();
+      }
+
+      try {
+        const res = await fetch('/api/git/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoPath: activeRepoPath || undefined,
+            branch: branchName
+          })
+        });
+        const data = await res.json();
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          lucide.createIcons();
+        }
+
+        if (!data.success) {
+          alert('切换分支失败: ' + (data.error || '未知错误'));
+          return;
+        }
+
+        const branchEl = document.getElementById('currentWorkspaceBranch');
+        if (branchEl) branchEl.textContent = data.currentBranch;
+
+        await updateWorkspaceStatus();
+        await loadBranches();
+      } catch (err) {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          lucide.createIcons();
+        }
+        alert('切换分支请求失败: ' + err.message);
+      }
+    }
+
+    async function promptCreateNewBranch() {
+      const typed = (document.getElementById('branchSearchInput')?.value || '').trim();
+      const branchName = prompt('请输入新分支名称：', typed || 'feature/');
+      if (!branchName || !branchName.trim()) return;
+
+      closeBranchDropdown();
+      const btn = document.getElementById('btnBranchPill');
+      const origHtml = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin text-orange-500"></i><span class="font-mono text-xs">创建中...</span>`;
+        lucide.createIcons();
+      }
+
+      try {
+        const res = await fetch('/api/git/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoPath: activeRepoPath || undefined,
+            branch: branchName.trim(),
+            createIfMissing: true
+          })
+        });
+        const data = await res.json();
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          lucide.createIcons();
+        }
+
+        if (!data.success) {
+          alert('创建新分支失败: ' + (data.error || '未知错误'));
+          return;
+        }
+
+        alert(`✅ 成功创建并切换至新分支：${data.currentBranch}`);
+        const branchEl = document.getElementById('currentWorkspaceBranch');
+        if (branchEl) branchEl.textContent = data.currentBranch;
+
+        await updateWorkspaceStatus();
+        await loadBranches();
+      } catch (err) {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          lucide.createIcons();
+        }
+        alert('创建分支请求异常: ' + err.message);
+      }
+    }
+
+    function toggleBranchDropdown(e) {
+      if (e) e.stopPropagation();
+      closeRepoDropdown();
+      const dd = document.getElementById('branchPillDropdown');
+      if (!dd) return;
+      dd.classList.toggle('hidden');
+      if (!dd.classList.contains('hidden')) {
+        const searchInput = document.getElementById('branchSearchInput');
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.focus();
+        }
+        loadBranches();
+      }
+      lucide.createIcons();
+    }
+
+    function closeBranchDropdown() {
+      const dd = document.getElementById('branchPillDropdown');
+      if (dd) dd.classList.add('hidden');
     }
 
     function renderActiveRepoSelector(repos) {
@@ -1055,6 +1273,7 @@
 
     function toggleRepoDropdown(e) {
       if (e) e.stopPropagation();
+      closeBranchDropdown();
       const dd = document.getElementById('repoPillDropdown');
       if (!dd) return;
       dd.classList.toggle('hidden');
@@ -1067,11 +1286,19 @@
     }
 
     document.addEventListener('click', (e) => {
-      const dd = document.getElementById('repoPillDropdown');
-      const btn = document.getElementById('btnRepoPill');
-      if (dd && !dd.classList.contains('hidden')) {
-        if (!dd.contains(e.target) && (!btn || !btn.contains(e.target))) {
+      const repoDd = document.getElementById('repoPillDropdown');
+      const repoBtn = document.getElementById('btnRepoPill');
+      if (repoDd && !repoDd.classList.contains('hidden')) {
+        if (!repoDd.contains(e.target) && (!repoBtn || !repoBtn.contains(e.target))) {
           closeRepoDropdown();
+        }
+      }
+
+      const branchDd = document.getElementById('branchPillDropdown');
+      const branchBtn = document.getElementById('btnBranchPill');
+      if (branchDd && !branchDd.classList.contains('hidden')) {
+        if (!branchDd.contains(e.target) && (!branchBtn || !branchBtn.contains(e.target))) {
+          closeBranchDropdown();
         }
       }
     });
@@ -1099,6 +1326,7 @@
         }).catch(() => {});
       }
       await updateWorkspaceStatus();
+      await loadBranches();
     }
 
 

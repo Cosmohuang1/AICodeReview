@@ -169,4 +169,39 @@ describe('API routes (/api)', () => {
     expect(validData.valid).toBe(true);
     expect(validData.isGit).toBe(true);
   });
+
+  it('GET /api/git/branches returns current branch and branch list', async () => {
+    const res = await fetch(`${baseUrl}/api/git/branches?repoPath=${encodeURIComponent(process.cwd())}`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(typeof data.current).toBe('string');
+    expect(Array.isArray(data.branches)).toBe(true);
+    expect(data.branches.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('POST /api/git/checkout validates input and checks out branch', async () => {
+    // 缺少分支名应返回 400
+    const emptyRes = await fetch(`${baseUrl}/api/git/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch: '' }),
+    });
+    expect(emptyRes.status).toBe(400);
+
+    // 检出当前已有分支
+    const statusRes = await fetch(`${baseUrl}/api/workspace/status`);
+    const statusData = await statusRes.json();
+    const currentBranch = statusData.currentBranch;
+
+    const checkoutRes = await fetch(`${baseUrl}/api/git/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repoPath: process.cwd(), branch: currentBranch }),
+    });
+    expect(checkoutRes.status).toBe(200);
+    const checkoutData = await checkoutRes.json();
+    expect(checkoutData.success).toBe(true);
+    expect(checkoutData.currentBranch).toBe(currentBranch);
+  });
 });

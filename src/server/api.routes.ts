@@ -191,6 +191,55 @@ apiRouter.get('/workspace/status', (req: Request, res: Response) => {
   }
 });
 
+/**
+ * 获取指定仓库的 Git 分支列表及当前分支
+ */
+apiRouter.get('/git/branches', (req: Request, res: Response) => {
+  try {
+    const targetPath = (req.query.repoPath as string) || process.cwd();
+    if (!fs.existsSync(targetPath)) {
+      return res.status(400).json({ error: `指定仓库路径不存在: ${targetPath}` });
+    }
+    if (!gitService.isGitRepo(targetPath)) {
+      return res.status(400).json({ error: `指定路径不是有效的 Git 仓库: ${targetPath}` });
+    }
+
+    const result = gitService.listBranches(targetPath);
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 切换 Git 分支 (若不存在且 createIfMissing=true 则新建)
+ */
+apiRouter.post('/git/checkout', (req: Request, res: Response) => {
+  try {
+    const { repoPath, branch, createIfMissing } = req.body || {};
+    if (!branch || typeof branch !== 'string' || !branch.trim()) {
+      return res.status(400).json({ error: '必须提供有效的分支名称 (branch)' });
+    }
+
+    const targetPath = repoPath || process.cwd();
+    if (!fs.existsSync(targetPath)) {
+      return res.status(400).json({ error: `指定仓库路径不存在: ${targetPath}` });
+    }
+    if (!gitService.isGitRepo(targetPath)) {
+      return res.status(400).json({ error: `指定路径不是有效的 Git 仓库: ${targetPath}` });
+    }
+
+    const result = gitService.checkoutBranch(targetPath, branch, !!createIfMissing);
+    res.json({
+      success: true,
+      currentBranch: result.current,
+      message: `已成功切换到分支: ${result.current}`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 apiRouter.get('/fs/detected-repos', (_req: Request, res: Response) => {
   const candidateDirs = [
     'D:/github',

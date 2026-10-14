@@ -213,6 +213,91 @@ export class GitService {
   }
 
   /**
+   * 列出所有本地分支与当前分支
+   */
+  listBranches(repoPath: string): { current: string; branches: string[] } {
+    const resolvedPath = path.resolve(repoPath);
+    if (!this.isGitRepo(resolvedPath)) {
+      throw new Error(`目录不是有效的 Git 仓库: ${resolvedPath}`);
+    }
+
+    try {
+      const output = execSync('git branch --format="%(refname:short)|%(HEAD)"', {
+        cwd: resolvedPath,
+        encoding: 'utf-8',
+      }).trim();
+
+      let current = '';
+      const branches: string[] = [];
+
+      if (output) {
+        for (const line of output.split('\n')) {
+          const [branch, headMarker] = line.trim().split('|');
+          if (branch) {
+            branches.push(branch);
+            if (headMarker === '*' || headMarker === '+') {
+              current = branch;
+            }
+          }
+        }
+      }
+
+      if (!current) {
+        try {
+          current = execSync('git branch --show-current', { cwd: resolvedPath }).toString().trim();
+        } catch {
+          current = branches[0] || 'main';
+        }
+      }
+
+      return {
+        current: current || 'main',
+        branches: Array.from(new Set(branches)),
+      };
+    } catch (err: any) {
+      throw new Error(`获取分支列表失败: ${err.message}`);
+    }
+  }
+
+  /**
+   * 切换到目标分支 (若 createIfMissing 为 true 且分支不存在则创建)
+   */
+  checkoutBranch(repoPath: string, branchName: string, createIfMissing: boolean = false): { current: string } {
+    const resolvedPath = path.resolve(repoPath);
+    if (!this.isGitRepo(resolvedPath)) {
+      throw new Error(`目录不是有效的 Git 仓库: ${resolvedPath}`);
+    }
+
+    const trimmedBranch = branchName.trim();
+    if (!trimmedBranch) {
+      throw new Error('分支名称不能为空');
+    }
+
+    if (!/^[a-zA-Z0-9_\-\.\/]+$/.test(trimmedBranch)) {
+      throw new Error(`分支名称包含非法字符: ${trimmedBranch}`);
+    }
+
+    try {
+      if (createIfMissing) {
+        const { branches } = this.listBranches(resolvedPath);
+        if (branches.includes(trimmedBranch)) {
+          execSync(`git checkout "${trimmedBranch}"`, { cwd: resolvedPath, stdio: 'pipe' });
+        } else {
+          execSync(`git checkout -b "${trimmedBranch}"`, { cwd: resolvedPath, stdio: 'pipe' });
+        }
+      } else {
+        execSync(`git checkout "${trimmedBranch}"`, { cwd: resolvedPath, stdio: 'pipe' });
+      }
+
+      const current = execSync('git branch --show-current', { cwd: resolvedPath }).toString().trim() || trimmedBranch;
+      return { current };
+    } catch (err: any) {
+      const stderr = err.stderr ? err.stderr.toString() : err.message;
+      throw new Error(`切换分支失败 [${trimmedBranch}]: ${stderr.trim()}`);
+    }
+  }
+
+  /**
    * 创建并切换到新分支
    */
   createBranch(repoPath: string, branchName: string): void {

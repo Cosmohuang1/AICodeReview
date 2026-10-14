@@ -96,4 +96,43 @@ describe('GitService', () => {
     expect(statusAfter.hasChanges).toBe(false);
     expect(statusAfter.lastCommit.message).toBe('feat: add feature.js');
   });
+
+  it('支持列出本地分支与当前高亮分支 (listBranches)', () => {
+    const gitService = new GitService();
+    // 初始只有 main 分支
+    const initialBranches = gitService.listBranches(tempRepoDir);
+    expect(initialBranches.current).toBe('main');
+    expect(initialBranches.branches).toContain('main');
+
+    // 新建一个分支 feature-demo
+    gitService.createBranch(tempRepoDir, 'feature-demo');
+    const updatedBranches = gitService.listBranches(tempRepoDir);
+    expect(updatedBranches.current).toBe('feature-demo');
+    expect(updatedBranches.branches).toContain('main');
+    expect(updatedBranches.branches).toContain('feature-demo');
+  });
+
+  it('支持安全切换已存在的分支与新建分支 (checkoutBranch)', () => {
+    const gitService = new GitService();
+    // 创建一个分支 develop
+    gitService.createBranch(tempRepoDir, 'develop');
+    expect(gitService.listBranches(tempRepoDir).current).toBe('develop');
+
+    // 切换回 main
+    const checkoutResult = gitService.checkoutBranch(tempRepoDir, 'main');
+    expect(checkoutResult.current).toBe('main');
+    expect(gitService.listBranches(tempRepoDir).current).toBe('main');
+
+    // createIfMissing 模式创建并检出新分支
+    const newBranchResult = gitService.checkoutBranch(tempRepoDir, 'release/v1.0', true);
+    expect(newBranchResult.current).toBe('release/v1.0');
+    expect(gitService.listBranches(tempRepoDir).current).toBe('release/v1.0');
+  });
+
+  it('切换不存在的分支时抛出明确异常', () => {
+    const gitService = new GitService();
+    expect(() => {
+      gitService.checkoutBranch(tempRepoDir, 'non-existent-branch-999');
+    }).toThrow();
+  });
 });
