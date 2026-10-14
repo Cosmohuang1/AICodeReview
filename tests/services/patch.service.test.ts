@@ -61,4 +61,25 @@ describe('PatchService', () => {
       ]);
     }).toThrow(/路径穿越/);
   });
+
+  it('安全将建议替换目标行，保持换行符并支持回滚', () => {
+    const file = path.join(tempDir, 'main.ts');
+    fs.writeFileSync(file, 'const a = 1;\nconst b = 2;\nconst c = 3;\n');
+
+    const patchService = new PatchService();
+    const session = patchService.applyLineSuggestion(tempDir, 'main.ts', 2, 'const b = 200;\nconst extra = true;');
+
+    const modified = fs.readFileSync(file, 'utf-8');
+    expect(modified).toBe('const a = 1;\nconst b = 200;\nconst extra = true;\nconst c = 3;\n');
+
+    session.rollback();
+    expect(fs.readFileSync(file, 'utf-8')).toBe('const a = 1;\nconst b = 2;\nconst c = 3;\n');
+  });
+
+  it('applyLineSuggestion 防止路径穿越', () => {
+    const patchService = new PatchService();
+    expect(() => {
+      patchService.applyLineSuggestion(tempDir, '../../etc/passwd', 1, 'bad');
+    }).toThrow(/路径穿越/);
+  });
 });

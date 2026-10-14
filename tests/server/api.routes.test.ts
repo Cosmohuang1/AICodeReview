@@ -204,4 +204,27 @@ describe('API routes (/api)', () => {
     expect(checkoutData.success).toBe(true);
     expect(checkoutData.currentBranch).toBe(currentBranch);
   });
+
+  it('POST /api/patch/apply-suggestion validates input and applies suggestions safely', async () => {
+    // 缺少参数应返回 400
+    const emptyRes = await fetch(`${baseUrl}/api/patch/apply-suggestion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(emptyRes.status).toBe(400);
+
+    // 路径穿越应被拒绝返回 403
+    const hackRes = await fetch(`${baseUrl}/api/patch/apply-suggestion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repoPath: process.cwd(),
+        filePath: '../../outside.txt',
+        line: 1,
+        suggestion: 'hack',
+      }),
+    });
+    expect(hackRes.status).toBe(403);
+  });
 });

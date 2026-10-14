@@ -22,10 +22,35 @@ import { AgentLoopService, type AgentTaskResult } from '../services/agent-loop.s
 import { runReactEngine } from '../agent-engine/react-engine.js';
 import { defaultReactStreamer, type StreamEventType } from '../agent-engine/react-streamer.js';
 
+import os from 'node:os';
+import { PatchService } from '../services/patch.service.js';
+import { ReviewService } from '../services/review.service.js';
+
 export const apiRouter = Router();
 
 const gitService = new GitService();
+const patchService = new PatchService();
 const agentLoopService = new AgentLoopService();
+
+let activeRepoPath: string | null = null;
+try {
+  activeRepoPath = defaultSqliteStorage.getPreference('activeRepoPath');
+} catch {
+  // ignore
+}
+
+function getGitRemoteInfo(cwd: string): { owner: string; repo: string } | null {
+  try {
+    const remoteUrl = execSync('git remote get-url origin', { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+    const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)(?:\.git)?$/);
+    if (match) {
+      return { owner: match[1], repo: match[2] };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
 
 export interface EditedFileItem {
   path: string;
@@ -46,6 +71,9 @@ export interface TaskDetail {
   agentSummary: {
     commit: string;
     bulletPoints: string[];
+    overview?: string;
+    walkthrough?: Array<{ file: string; changes: string }>;
+    mermaidDiagram?: string;
     riskNote?: string;
     regressionStatus: string;
     thoughtProcess?: string;
@@ -241,13 +269,18 @@ apiRouter.post('/git/checkout', (req: Request, res: Response) => {
 });
 
 apiRouter.get('/fs/detected-repos', (_req: Request, res: Response) => {
+  const home = os.homedir();
   const candidateDirs = [
+    process.cwd(),
+    path.dirname(process.cwd()),
+    path.join(home, 'Projects'),
+    path.join(home, 'source', 'repos'),
+    path.join(home, 'github'),
+    path.join(home, '.gemini', 'antigravity', 'scratch'),
+    path.join(home, 'Desktop'),
     'D:/github',
     'D:/Projects',
     'D:/work',
-    'C:/Users/admin/source/repos',
-    'C:/Users/admin/.gemini/antigravity/scratch',
-    'C:/Users/admin/Desktop'
   ];
 
   const results: Array<{ name: string; path: string; isGit: boolean; isConnected: boolean }> = [];
@@ -429,20 +462,24 @@ apiRouter.post('/task/:id/create-pr', (req: Request, res: Response) => {
   const item = tasksList.find(r => r.id === req.params.id);
   if (!item) return res.status(404).json({ error: '未找到指定任务' });
 
+  const targetRepoPath = activeRepoPath || process.cwd();
   let pushed = false;
   try {
-    execSync(`git push origin "${item.branch}"`, { stdio: 'ignore' });
+    execSync(`git push origin "${item.branch}"`, { cwd: targetRepoPath, stdio: 'ignore' });
     pushed = true;
   } catch {
     // 忽略未配置远程或无权限情况
   }
 
+  const remote = getGitRemoteInfo(targetRepoPath);
+  const repoBase = remote ? `https://github.com/${remote.owner}/${remote.repo}` : `https://github.com/local/${item.repo || 'repo'}`;
+  const prUrl = `${repoBase}/compare/main...${item.branch}?expand=1`;
+
   res.json({
     success: true,
     branch: item.branch,
     message: `PR 已就绪！已准备向 main 分支创建 Pull Request`,
-    prUrl: `https://github.com/Cosmohuang1/AICodeReview/compare/main...${item.branch}?expand=1`,
-    prNumber: 45,
+    prUrl,
     pushed
   });
 });
@@ -561,6 +598,7 @@ apiRouter.post('/agent/react/run', async (req: Request, res: Response) => {
       rawDiff: result.rawDiff
     };
     tasksList.unshift(newTaskItem);
+    defaultSqliteStorage.saveTask(newTaskItem);
   }).catch(err => {
     defaultReactStreamer.broadcast(sessionId, 'error', { error: err.message });
   });
@@ -576,26 +614,34 @@ apiRouter.post('/agent/react/abort/:sessionId', (req: Request, res: Response) =>
 });
 
 apiRouter.post('/agent/deliver', (req: Request, res: Response) => {
-  const { taskId, branch } = req.body;
-  const item = taskId ? tasksList.find(r => r.id === taskId) : (tasksList.length > 0 ? tasksList[0] : null);
-  const targetBranch = branch || item?.branch || 'coderabbit/latest';
-
-  let pushed = false;
   try {
-    execSync(`git push origin "${targetBranch}"`, { stdio: 'ignore' });
-    pushed = true;
-  } catch {
-    // 忽略未配置远程或无权限情况
-  }
+    const { taskId, branch } = req.body;
+    const item = taskId ? tasksList.find(r => r.id === taskId) : (tasksList.length > 0 ? tasksList[0] : null);
+    const targetBranch = branch || item?.branch || 'coderabbit/latest';
+    const targetRepoPath = activeRepoPath || process.cwd();
 
-  res.json({
-    success: true,
-    branch: targetBranch,
-    message: `PR 已就绪！已准备向 main 分支创建 Pull Request`,
-    prUrl: `https://github.com/Cosmohuang1/AICodeReview/compare/main...${targetBranch}?expand=1`,
-    prNumber: 45,
-    pushed,
-  });
+    let pushed = false;
+    try {
+      execSync(`git push origin "${targetBranch}"`, { cwd: targetRepoPath, stdio: 'ignore' });
+      pushed = true;
+    } catch {
+      // 忽略未配置远程或无权限情况
+    }
+
+    const remote = getGitRemoteInfo(targetRepoPath);
+    const repoBase = remote ? `https://github.com/${remote.owner}/${remote.repo}` : `https://github.com/local/${item?.repo || 'repo'}`;
+    const prUrl = `${repoBase}/compare/main...${targetBranch}?expand=1`;
+
+    res.json({
+      success: true,
+      branch: targetBranch,
+      message: `PR 已就绪！已准备向 main 分支创建 Pull Request`,
+      prUrl,
+      pushed,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: `交付失败: ${err.message}` });
+  }
 });
 
 apiRouter.get('/analytics', (_req: Request, res: Response) => {
@@ -683,6 +729,9 @@ apiRouter.post('/workspace/preference', (req: Request, res: Response) => {
   const { key = 'activeRepoPath', value } = req.body;
   if (typeof value === 'string') {
     defaultSqliteStorage.setPreference(key, value);
+    if (key === 'activeRepoPath') {
+      activeRepoPath = value;
+    }
   }
   res.json({ success: true, key, value });
 });
@@ -905,140 +954,24 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
       }
     }
 
-    // 过滤排除文件与自动生成代码/样板代码
-    const AUTO_GENERATED_PATTERNS = [
-      '.designer.', '.generated.', '.g.cs', '.min.js', '.min.css',
-      'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.map',
-      '.d.ts', '.svg', '.png', '.ico', '.woff', '.woff2'
-    ];
-
-    const eligibleFiles = parsedFiles.filter(f => {
-      const lower = f.filePath.toLowerCase();
-      if (AUTO_GENERATED_PATTERNS.some(p => lower.includes(p))) return false;
-      return !config.exclude.some(pattern => f.filePath.endsWith(pattern.replace('*', '')));
+    // 统一执行全流程审查 (包含样板排除、权重打分、AST分块、确定性规约、6 Agent并发、去重、Self-Critique二阶降噪与锚定)
+    const reviewResult = await ReviewService.executeReview({
+      rawDiff,
+      fileContents,
+      config,
+      contextTitle: desc,
+      onStep: (step, name) => broadcast('step', { step, name }),
+      onThink: (text) => broadcast('think', { text }),
+      onToolCall: (name, args) => broadcast('tool_call', { name, args }),
+      onToolResult: (name, success, output) => broadcast('tool_result', { name, success, output }),
+      onProgress: (done, total, chunk) => {
+        broadcast('step', { step: 3, name: `[${done}/${total}] 走查 ${path.basename(chunk.file)}` });
+        broadcast('think', { text: `[${done}/${total}] 完成分块审查: ${chunk.file} (第 ${chunk.startLine}-${chunk.endLine} 行)` });
+      },
     });
 
-    // 计算改动影响权重 (Impact Score)：逻辑代码与高变动密度优先
-    const scoredFiles = eligibleFiles.map(f => {
-      const isCoreLogic = /\.(cs|ts|tsx|js|jsx|go|java|py|rs|cpp|c|php|rb)$/i.test(f.filePath);
-      const isServiceOrAuth = /(service|controller|auth|token|security|manager|model|handler|engine|api)/i.test(f.filePath);
-      const fileAdds = f.hunks.reduce((acc, h) => acc + h.newLines.length, 0);
-      const fileDels = f.hunks.reduce((acc, h) => acc + Math.max(0, h.rawHunk.split('\n').filter(l => l.startsWith('-')).length), 0);
-      const score = (fileAdds * 2 + fileDels) + (isCoreLogic ? 50 : 0) + (isServiceOrAuth ? 100 : 0);
-      return { file: f, score };
-    });
+    const { summary, comments: enrichedComments, chunks, analyzedFiles: topDeepFiles } = reviewResult;
 
-    scoredFiles.sort((a, b) => b.score - a.score);
-    const sortedFiles = scoredFiles.map(s => s.file);
-
-    // 智能采样：大工程优先深度走查 Top 8~12 个核心文件，其余次要文件做全局汇总，避免数百次调用引起长时间阻塞
-    const maxDeepFiles = Math.min(10, config.maxFilesPerReview || 10);
-    const topDeepFiles = sortedFiles.slice(0, maxDeepFiles);
-
-    // 分块
-    const chunks = chunkFiles(topDeepFiles, fileContents);
-    broadcast('think', {
-      text: `已完成大工程漏斗剪枝：从 ${parsedFiles.length} 个文件中精准提取出 Top ${topDeepFiles.length} 个核心高危文件，生成 ${chunks.length} 个关键审查分块（非核心样板文件转入宏观汇总，保障 15 秒极速走查）。`
-    });
-
-    // 6 个 Agent 并发审查 + 实时进度细粒度通知
-    broadcast('step', { step: 3, name: `Agent 并发走查 (共 ${chunks.length} 块)` });
-    broadcast('tool_call', {
-      name: 'agent_orchestrator',
-      args: {
-        agents: ['bug', 'security', 'performance', 'style', 'test', 'custom'],
-        chunkCount: chunks.length,
-        concurrency: 4,
-        model: process.env.DEEPSEEK_MODEL || 'deepseek-chat'
-      }
-    });
-
-    // 6 个 Agent 并发审查 + 确定性规约 (0 Token, 100% 精度)
-    const deterministicComments = chunks.flatMap(chunk => runDeterministicRules(chunk));
-    if (deterministicComments.length > 0) {
-      broadcast('think', {
-        text: `确定性规约引擎已先行拦截 ${deterministicComments.length} 处硬编码密钥/高危规约缺陷（0 Token 消耗）`
-      });
-    }
-
-    const rawComments = await runOrchestrator(chunks, config, (done, total, chunk) => {
-      broadcast('step', { step: 3, name: `[${done}/${total}] 走查 ${path.basename(chunk.file)}` });
-      broadcast('think', { text: `[${done}/${total}] 完成分块审查: ${chunk.file} (第 ${chunk.startLine}-${chunk.endLine} 行)` });
-    });
-
-    // 跨 Agent 去重与聚合
-    const combinedComments = deduplicateComments([...deterministicComments, ...rawComments]);
-
-    broadcast('tool_result', {
-      name: 'agent_orchestrator',
-      success: true,
-      output: `并发审查与智能去重完毕，捕获 ${combinedComments.length} 处潜在批注与改进点`
-    });
-
-    // Self-Critique 二阶降噪
-    broadcast('step', { step: 4, name: 'Self-Critique 二阶批判降噪' });
-    broadcast('think', {
-      text: `启动 Self-Critique 二阶自愈批判机制，结合全上下文对 ${combinedComments.length} 项初筛批注进行交叉验证，彻底剔除假阳性与幻觉...`
-    });
-    broadcast('tool_call', {
-      name: 'self_critique_filter',
-      args: { rawCommentsCount: combinedComments.length }
-    });
-
-    const filteredRaw = await selfCritique(combinedComments, chunks, config);
-
-    // Unified Diff 行号防漂移锚定与建议清洗
-    const anchoredComments = anchorComments(filteredRaw, topDeepFiles);
-
-    // 为每条 Comment 注入 CodeRabbit 风格的富结构（优先级、AI 决策理由与 Unified Diff 建议）
-    const enrichedComments = anchoredComments.map(c => {
-
-      let priority: 'P0' | 'P1' | 'P2' = 'P1';
-      let tag = 'Standard review';
-      let whyPriority = 'Keep this visible for async review because it is useful work without an immediate interruption signal.';
-
-      if (c.severity === 'error' || c.category === 'security' || c.category === 'bug') {
-        priority = 'P0';
-        tag = c.category === 'security' ? 'High security risk' : 'Critical logic bug';
-        whyPriority = 'Review this early because it can resolve assumptions that may affect nearby PRs and reduce rework.';
-      } else if (c.category === 'performance') {
-        priority = 'P1';
-        tag = 'Performance risk';
-        whyPriority = 'Optimize early to prevent latency regression before deployment.';
-      } else {
-        priority = 'P2';
-        tag = 'Maintenance | Style';
-        whyPriority = 'Hold behind core logic review; address in routine cleanup pass.';
-      }
-
-      // 构造 Unified Diff 建议块
-      let diffSnippet = '';
-      if (c.suggestion && c.suggestion.trim()) {
-        diffSnippet = `@@ -${c.line},1 +${c.line},${c.suggestion.split('\n').length} @@\n` +
-          `- // Line ${c.line}: 需优化代码\n` +
-          c.suggestion.split('\n').map(l => `+ ${l}`).join('\n');
-      }
-
-      return {
-        ...c,
-        priority,
-        tag,
-        whyPriority,
-        diffSnippet
-      };
-    });
-
-    broadcast('tool_result', {
-      name: 'self_critique_filter',
-      success: true,
-      output: `二阶过滤完成：有效过滤 ${rawComments.length - enrichedComments.length} 处误报，保留 ${enrichedComments.length} 项高置信度修改建议`
-    });
-
-    // 生成 Summary
-    broadcast('step', { step: 5, name: '总结报告与风险索引生成' });
-    broadcast('think', { text: `正在生成全局审查总结报告、关键修改项列表与回归风险提示...` });
-
-    const summary = await summaryAgent(desc, topDeepFiles, config);
     broadcast('finish', {
       text: `代码审查分析圆满完成！共分析 ${editedFilesList.length} 个变更文件，产出 ${enrichedComments.length} 处经过二阶核验的高质量批注。`
     });
@@ -1058,13 +991,16 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
       repo: repoName,
       branch: workspaceStatus.currentBranch,
       pushedCommit: workspaceStatus.lastCommit.hash || 'HEAD',
-      author: workspaceStatus.lastCommit.author || 'Cosmohuang1',
+      author: workspaceStatus.lastCommit.author || process.env.GIT_AUTHOR_NAME || 'Developer',
       workedTime: '刚刚完成',
       timestamp: '刚刚',
       status: 'changes_ready',
       agentSummary: {
         commit: workspaceStatus.lastCommit.hash || 'HEAD',
         bulletPoints: bulletList,
+        overview: summary.overview,
+        walkthrough: summary.walkthrough,
+        mermaidDiagram: summary.mermaidDiagram,
         riskNote: '已完成真实代码库静态分析与二阶过滤审查。',
         regressionStatus: '本地审查完成',
         thoughtProcess: `1. 提取 Diff：执行 \`${cmd}\` 扫描工作区变更，捕获 ${parsedFiles.length} 个文件的语法结构；\n` +
@@ -1108,7 +1044,6 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     defaultSqliteStorage.saveTask(newTaskItem);
 
     res.json({
-
       success: true,
       task: newTaskItem,
       id: newTaskItem.id
@@ -1119,32 +1054,22 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
 });
 
 apiRouter.post('/patch/apply-suggestion', (req: Request, res: Response) => {
-  const { repoPath = process.cwd(), filePath, line, suggestion } = req.body;
+  const { repoPath = process.cwd(), filePath, line, suggestion, endLine } = req.body;
   if (!filePath || typeof line !== 'number' || !suggestion) {
     return res.status(400).json({ error: '缺少必要参数: filePath, line, suggestion' });
   }
 
   const targetCwd = path.resolve(repoPath);
-  const targetFile = path.resolve(targetCwd, filePath);
-
-  if (!fs.existsSync(targetFile)) {
-    return res.status(404).json({ error: `目标文件不存在: ${targetFile}` });
-  }
-
   try {
-    const content = fs.readFileSync(targetFile, 'utf-8');
-    const lines = content.split('\n');
-    const targetIdx = Math.max(0, line - 1);
-
-    // 将建议代码替换或插入到目标行
-    lines[targetIdx] = suggestion;
-    fs.writeFileSync(targetFile, lines.join('\n'), 'utf-8');
-
+    const session = patchService.applyLineSuggestion(targetCwd, filePath, line, suggestion, endLine);
     res.json({
       success: true,
-      message: `已成功将优化建议应用到 ${filePath} 第 ${line} 行`
+      sessionId: session.id,
+      message: `已成功将优化建议应用到 ${filePath} 第 ${line} 行`,
+      appliedFiles: session.appliedFiles,
     });
   } catch (err: any) {
-    res.status(500).json({ error: `应用建议失败: ${err.message}` });
+    const status = err.message.includes('不存在') ? 404 : (err.message.includes('路径穿越') ? 403 : 500);
+    res.status(status).json({ error: `应用建议失败: ${err.message}` });
   }
 });

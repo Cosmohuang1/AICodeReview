@@ -76,4 +76,44 @@ export class PatchService {
       rollback
     };
   }
+
+  /**
+   * 将优化建议安全应用到目标文件的指定行（支持单行、多行以及指定结束行），保留原有换行符并生成可回滚会话
+   */
+  applyLineSuggestion(
+    cwd: string,
+    filePath: string,
+    line: number,
+    suggestion: string,
+    endLine?: number
+  ): PatchSession {
+    const resolvedCwd = path.resolve(cwd);
+    const fullPath = path.resolve(resolvedCwd, filePath);
+    const relative = path.relative(resolvedCwd, fullPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error(`检测到非法路径穿越尝试: ${filePath}`);
+    }
+    if (!fs.existsSync(fullPath)) {
+      throw new Error(`目标文件不存在: ${filePath}`);
+    }
+
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    const isCRLF = content.includes('\r\n');
+    const newline = isCRLF ? '\r\n' : '\n';
+    const lines = content.split(/\r?\n/);
+
+    const startIdx = Math.max(0, line - 1);
+    const endIdx = typeof endLine === 'number' && endLine >= line ? Math.max(0, endLine - 1) : startIdx;
+
+    let cleanSuggestion = suggestion.trim();
+    if (cleanSuggestion.startsWith('```')) {
+      cleanSuggestion = cleanSuggestion.replace(/^```[a-zA-Z0-9_-]*\r?\n/, '').replace(/\r?\n```$/, '');
+    }
+
+    const suggestionLines = cleanSuggestion.split(/\r?\n/);
+    lines.splice(startIdx, endIdx - startIdx + 1, ...suggestionLines);
+
+    const newContent = lines.join(newline);
+    return this.applyFileChanges(resolvedCwd, [{ path: filePath, content: newContent }]);
+  }
 }
