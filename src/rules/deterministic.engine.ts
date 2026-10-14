@@ -63,7 +63,8 @@ const DETERMINISTIC_RULES: RuleDefinition[] = [
     severity: 'error',
     name: 'SQL 字符串拼接注入风险',
     match: (line: string) => {
-      if (/(?:select|update|delete|insert\s+into)\b[^\n;]*\+\s*[\w.]+/i.test(line)) {
+      if (/\.Select\s*\(/.test(line)) return null;
+      if (/(?:["']\s*(?:select|update|delete|insert\s+into)\b[^\n;]*["']\s*\+\s*[\w.]+|\+\s*["']\s*(?:select|update|delete|insert\s+into)\b)/i.test(line)) {
         return {
           matched: true,
           message: '检测到 SQL 语句直接通过字符串拼接变量，存在严重的 SQL 注入风险。请改用参数化查询（Parameterized Query）或 ORM 预编译。',
@@ -150,6 +151,48 @@ const DETERMINISTIC_RULES: RuleDefinition[] = [
           matched: true,
           message: '在 if 判断条件中使用了单等号赋值操作符（=）而非比较操作符（===），这通常是手误导致的不符合预期逻辑。',
           suggestion: (orig: string) => orig.replace(/(\bif\s*\(\s*[\w.]+)\s*=\s*([^=])/, '$1 === $2'),
+        };
+      }
+      return null;
+    },
+  },
+
+  // 5. 硬编码宿主机绝对文件路径 (Hardcoded Absolute Paths)
+  {
+    id: 'bug-hardcoded-absolute-path',
+    category: 'bug',
+    severity: 'error',
+    name: '硬编码本地宿主机绝对路径',
+    match: (line: string) => {
+      if (/\b(?:https?|ftp|file):\/\//i.test(line)) return null;
+
+      // 匹配 Windows 盘符绝对路径 @"d:\..." 或 "d:\..." 或 "C:\..."
+      const winMatch = line.match(/(?:@?["'])([a-zA-Z]:(?:\\\\|\/|\\)[^"'\n\r]+)(?:["'])/);
+      // 匹配 Linux/Unix 宿主机绝对路径 "/home/...", "/Users/...", "/root/..."
+      const unixMatch = line.match(/(?:["'])(\/(?:home|Users|root|var|etc|opt)\/[^"'\n\r]+)(?:["'])/);
+      const matchedPath = winMatch ? winMatch[1] : (unixMatch ? unixMatch[1] : null);
+
+      if (matchedPath) {
+        return {
+          matched: true,
+          message: `检测到代码中硬编码了宿主机绝对路径 "${matchedPath}"。此类绝对路径与本机强耦合，在 CI/CD 流水线（如 GitHub Actions、GitLab CI）或其他团队成员机器上必然因找不到路径而运行失败。建议改用相对路径、Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ...)、配置文件 (appsettings.json) 或环境变量注入。`,
+        };
+      }
+      return null;
+    },
+  },
+
+  // 6. 调试排查遗留异常抛出 (Debug Throw Leftover)
+  {
+    id: 'bug-debug-throw-leftover',
+    category: 'bug',
+    severity: 'warning',
+    name: '调试排查异常抛出遗留',
+    match: (line: string) => {
+      if (/throw\s+new\s+Exception\s*\(\s*\$?[@'"]\s*(?:RESULT|DEBUG|TODO|TEMP|TEST|FIND)/i.test(line)) {
+        return {
+          matched: true,
+          message: '检测到代码中遗留了用于本地排查调试的临时异常抛出（throw new Exception(...)）。请在提交前移除调试代码，改用标准单元测试断言（如 Assert.Equal、Assert.True）。',
         };
       }
       return null;

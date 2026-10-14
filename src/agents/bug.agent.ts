@@ -9,6 +9,8 @@ export const bugAgent: AgentFn = async (chunk, config) => {
 - 异常未捕获或错误处理缺失
 - 并发竞态条件
 - 逻辑错误（条件判断反向、操作符优先级错误、变量遮蔽）
+- 硬编码宿主机绝对文件路径（如 @"D:\..."、"C:\..."、"/home/..." 等会导致 CI/CD 或其他机器因路径不存在而执行失败的硬编码路径）
+- 遗留未清理的临时调试断点与调试异常抛出（如 throw new Exception(...)、Debugger.Break()）
 
 【文件】: ${chunk.file} (${chunk.language})
 【代码上下文】:

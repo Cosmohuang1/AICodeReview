@@ -2662,19 +2662,22 @@
       }
 
       // 4. 调用关系与状态流转图 (Mermaid Diagram)
+      const rawDiagram = (summary.mermaidDiagram || '').replace(/^```(?:mermaid)?/i, '').replace(/```$/, '').trim();
+      const validPrefixes = ['graph', 'flowchart', 'sequencediagram', 'classdiagram', 'statediagram', 'erdiagram'];
+      const firstWord = rawDiagram.split(/[\s\n]+/)[0]?.toLowerCase();
+      const hasDiagram = validPrefixes.includes(firstWord) && rawDiagram.length > 15;
+
       if (hasDiagram) {
         html += `
-          <div class="border border-zinc-200 rounded-2xl bg-white shadow-2xs overflow-hidden">
+          <div id="detailMermaidCard" class="border border-zinc-200 rounded-2xl bg-white shadow-2xs overflow-hidden">
             <div class="px-4 py-3 bg-[#fafafa] border-b border-zinc-200 flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <i data-lucide="git-branch" class="w-4 h-4 text-zinc-600"></i>
                 <span class="font-semibold text-xs text-zinc-900">架构调用与状态流转图 (Sequence & Flow)</span>
               </div>
             </div>
-            <div class="p-4 bg-zinc-50/50 overflow-x-auto flex justify-center">
-              <div class="mermaid text-xs">
-                ${summary.mermaidDiagram.trim()}
-              </div>
+            <div id="detailMermaidContent" class="p-4 bg-zinc-50/50 overflow-x-auto flex justify-center">
+              <pre class="mermaid text-xs">${escapeHtml(rawDiagram)}</pre>
             </div>
           </div>
         `;
@@ -2684,9 +2687,21 @@
       lucide.createIcons();
       if (hasDiagram && window.mermaid) {
         try {
-          mermaid.run();
+          mermaid.initialize({
+            startOnLoad: false,
+            theme: 'neutral',
+            securityLevel: 'loose',
+            suppressErrorRendering: true
+          });
+          mermaid.run({
+            nodes: [document.querySelector('#detailMermaidCard .mermaid')]
+          }).catch(e => {
+            console.warn('[mermaid] render failed, hiding card:', e);
+            document.getElementById('detailMermaidCard')?.remove();
+          });
         } catch (e) {
-          console.warn('[mermaid] render failed:', e);
+          console.warn('[mermaid] run exception, hiding card:', e);
+          document.getElementById('detailMermaidCard')?.remove();
         }
       }
     }

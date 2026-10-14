@@ -8,7 +8,7 @@ export const styleAgent: AgentFn = async (chunk, config) => {
 - 关键业务逻辑缺少必要注释或文档
 - 函数或方法过长、嵌套过深、圈复杂度过高（建议拆分）
 - 重复代码或可抽象逻辑（违反 DRY 原则）
-- 魔法数字或硬编码配置未抽取为常量
+- 魔法数字、硬编码宿主机绝对文件路径（如 @"D:\..."、"C:\..." 等）或硬编码数据库连接字符串未抽取为配置项
 - TypeScript 类型不规范（滥用 any、类型断言不安全）
 
 【文件】: ${chunk.file} (${chunk.language})

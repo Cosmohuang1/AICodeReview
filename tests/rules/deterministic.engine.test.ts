@@ -159,6 +159,46 @@ describe('DeterministicRulesEngine', () => {
       expect(assignComment).toBeDefined();
       expect(assignComment?.category).toBe('bug');
     });
+
+    it('detects hardcoded Windows and Linux absolute paths', () => {
+      const chunk = createChunk(
+        `@@ -510,5 +510,6 @@
++var dbPath = @"d:\\opc\\ACLPlugins\\ACLPlugins.Host\\App_Data\\acl.db";
++var unixPath = "/home/developer/workspace/app.db";`,
+        510
+      );
+
+      const comments = runDeterministicRules(chunk);
+      const pathComments = comments.filter(c => c.message.includes('绝对路径') || c.message.includes('宿主机'));
+      expect(pathComments.length).toBeGreaterThanOrEqual(2);
+      expect(pathComments[0].severity).toBe('error');
+      expect(pathComments[0].category).toBe('bug');
+    });
+
+    it('detects leftover debug throws', () => {
+      const chunk = createChunk(
+        `@@ -520,3 +520,4 @@
++throw new Exception($"RESULT => TOTAL: {page.Total}, ITEMS: {page.Items.Count}");`,
+        520
+      );
+
+      const comments = runDeterministicRules(chunk);
+      const debugComment = comments.find(c => c.message.includes('调试') || c.message.includes('throw new Exception'));
+      expect(debugComment).toBeDefined();
+      expect(debugComment?.severity).toBe('warning');
+    });
+
+    it('does not falsely trigger SQL injection on LINQ .Select() in logging callbacks', () => {
+      const chunk = createChunk(
+        `@@ -518,3 +518,4 @@
++db.Aop.OnLogExecuting = (sql, pars) => sqlList.Add(sql + " | PARS: " + string.Join(", ", pars.Select(p => $"{p.ParameterName}={p.Value}")));`,
+        518
+      );
+
+      const comments = runDeterministicRules(chunk);
+      const sqlComment = comments.find(c => c.message.includes('SQL 字符串拼接注入风险'));
+      expect(sqlComment).toBeUndefined();
+    });
   });
 
   describe('Clean code passes without false positives', () => {
