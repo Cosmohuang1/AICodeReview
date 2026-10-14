@@ -3117,21 +3117,26 @@
     async function runLiveBuildCheck() {
       const buildTextEl = document.getElementById('verificationBuildText');
       if (buildTextEl) {
-        buildTextEl.innerHTML = `<span class="text-amber-600 font-semibold flex items-center gap-1"><i data-lucide="loader-2" class="w-3 h-3 animate-spin inline"></i> 正在对 ${activeRepoPath ? activeRepoPath.split(/[\\\\/]/).pop() : '当前仓库'} 执行真实编译检查...</span>`;
+        buildTextEl.innerHTML = `<span class="text-amber-600 font-semibold flex items-center gap-1"><i data-lucide="loader-2" class="w-3 h-3 animate-spin inline"></i> 正在对 ${activeRepoPath ? activeRepoPath.split(/[\\\\/]/).pop() : '当前仓库'} 执行定向编译检查...</span>`;
         lucide.createIcons();
       }
+      const editedFiles = currentTask?.editedFiles?.map(f => f.path) || [];
       try {
         const res = await fetch('/api/verification/build-check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ repoPath: activeRepoPath || undefined })
+          body: JSON.stringify({
+            repoPath: activeRepoPath || undefined,
+            files: editedFiles
+          })
         });
         const data = await res.json();
         if (buildTextEl) {
+          const summaryBadge = data.targetedSummary ? `<div class="text-[10px] text-zinc-500 font-mono mt-0.5">${escapeHtml(data.targetedSummary)}</div>` : '';
           if (data.success) {
-            buildTextEl.innerHTML = `编译通过：<span class="text-emerald-600 font-semibold">0 错误</span>${data.warningCount ? `，${data.warningCount} 警告` : ''}；命令: <code class="font-mono text-zinc-700">${data.cmd || 'build'}</code>。`;
+            buildTextEl.innerHTML = `<div>编译通过：<span class="text-emerald-600 font-semibold">0 错误</span>${data.warningCount ? `，${data.warningCount} 警告` : ''}；定向验证成功。</div>${summaryBadge}`;
           } else {
-            buildTextEl.innerHTML = `编译异常：<strong class="text-red-600 font-semibold">${data.errorCount || 1} 处构建错误</strong>${data.warningCount ? `，${data.warningCount} 警告` : ''}；代码库待修复。`;
+            buildTextEl.innerHTML = `<div>编译异常：<strong class="text-red-600 font-semibold">${data.errorCount || 1} 处构建错误</strong>${data.warningCount ? `，${data.warningCount} 警告` : ''}。</div>${summaryBadge}`;
           }
         }
         await fetchEnvironmentInfo();
@@ -3155,6 +3160,8 @@
 
       if (passedEl) passedEl.textContent = '跑测中...';
 
+      const editedFiles = currentTask?.editedFiles?.map(f => f.path) || [];
+
       try {
         const [testRes, buildRes] = await Promise.allSettled([
           fetch('/api/verification/test-run', {
@@ -3165,7 +3172,10 @@
           fetch('/api/verification/build-check', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repoPath: activeRepoPath || undefined })
+            body: JSON.stringify({
+              repoPath: activeRepoPath || undefined,
+              files: editedFiles
+            })
           }).then(r => r.json())
         ]);
 
@@ -3181,10 +3191,11 @@
         if (buildRes.status === 'fulfilled' && buildRes.value) {
           const b = buildRes.value;
           if (buildTextEl) {
+            const summaryBadge = b.targetedSummary ? `<div class="text-[10px] text-zinc-500 font-mono mt-0.5">${escapeHtml(b.targetedSummary)}</div>` : '';
             if (b.success) {
-              buildTextEl.innerHTML = `静态编译通过：<span class="text-emerald-600 font-semibold">0 错误</span>${b.warningCount ? `，${b.warningCount} 警告` : ''}；AST 与类型体系就绪。`;
+              buildTextEl.innerHTML = `<div>静态编译通过：<span class="text-emerald-600 font-semibold">0 错误</span>${b.warningCount ? `，${b.warningCount} 警告` : ''}；AST 与类型就绪。</div>${summaryBadge}`;
             } else {
-              buildTextEl.innerHTML = `静态编译待修复：<strong class="text-red-600 font-semibold">${b.errorCount || 1} 错误</strong>${b.warningCount ? `，${b.warningCount} 警告` : ''}。`;
+              buildTextEl.innerHTML = `<div>静态编译待修复：<strong class="text-red-600 font-semibold">${b.errorCount || 1} 错误</strong>${b.warningCount ? `，${b.warningCount} 警告` : ''}。</div>${summaryBadge}`;
             }
           }
         }

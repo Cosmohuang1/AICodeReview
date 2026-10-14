@@ -269,22 +269,129 @@ apiRouter.post('/git/checkout', (req: Request, res: Response) => {
 });
 
 /**
- * 实时执行被审查仓库的真实构建/编译检查
+ * 根据修改的文件列表，向上查找最近的对应工程文件（.csproj 或 package.json）
+ * 实现按需精准定向编译，极大加速编译过程，并规避无关宿主工程锁盘等偶发干扰
+ */
+export function findTargetProjectsForFiles(targetCwd: string, filePaths?: string[]): { isDotnet: boolean; projects: string[]; summary: string } {
+  let files = filePaths && filePaths.length > 0 ? filePaths : [];
+  if (files.length === 0) {
+    try {
+      const diffFiles = execSync('git diff --name-only HEAD', { cwd: targetCwd, encoding: 'utf-8' }).trim();
+      if (diffFiles) {
+        files = diffFiles.split(/\r?\n/).filter(Boolean);
+      } else {
+        const lastCommitFiles = execSync('git diff-tree --no-commit-id --name-only -r HEAD', { cwd: targetCwd, encoding: 'utf-8' }).trim();
+        if (lastCommitFiles) {
+          files = lastCommitFiles.split(/\r?\n/).filter(Boolean);
+        }
+      }
+    } catch {
+      files = [];
+    }
+  }
+
+  const isDotnet = fs.existsSync(targetCwd) && (
+    fs.readdirSync(targetCwd).some(f => f.endsWith('.sln') || f.endsWith('.slnx') || f.endsWith('.csproj') || f === 'Directory.Build.props') ||
+    fs.existsSync(path.join(targetCwd, 'ACLPlugins.slnx')) ||
+    fs.existsSync(path.join(targetCwd, 'ACLPlugins.sln'))
+  );
+
+  if (isDotnet) {
+    const matchedProjects = new Set<string>();
+    for (const relFile of files) {
+      let currentDir = path.dirname(path.join(targetCwd, relFile));
+      while (currentDir.startsWith(targetCwd)) {
+        try {
+          if (fs.existsSync(currentDir)) {
+            const csprojFiles = fs.readdirSync(currentDir).filter(f => f.endsWith('.csproj') || f.endsWith('.fsproj'));
+            if (csprojFiles.length > 0) {
+              for (const proj of csprojFiles) {
+                const relProj = path.relative(targetCwd, path.join(currentDir, proj)).replace(/\\/g, '/');
+                matchedProjects.add(relProj);
+              }
+              break;
+            }
+          }
+        } catch {}
+        if (currentDir === targetCwd) break;
+        currentDir = path.dirname(currentDir);
+      }
+    }
+
+    const projectsList = Array.from(matchedProjects);
+    return {
+      isDotnet: true,
+      projects: projectsList,
+      summary: projectsList.length > 0 
+        ? `定向增量编译：已精准识别 ${projectsList.length} 个受影响工程 (${projectsList.map(p => path.basename(p, '.csproj')).join(', ')})`
+        : '全量编译：未检测到独立子工程，默认编译根解决方案'
+    };
+  }
+
+  const isNode = fs.existsSync(path.join(targetCwd, 'package.json'));
+  if (isNode) {
+    const matchedPkgDirs = new Set<string>();
+    for (const relFile of files) {
+      let currentDir = path.dirname(path.join(targetCwd, relFile));
+      while (currentDir.startsWith(targetCwd) && currentDir !== targetCwd) {
+        const pkgPath = path.join(currentDir, 'package.json');
+        if (fs.existsSync(pkgPath)) {
+          try {
+            const pkgJson = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+            if (pkgJson.scripts && pkgJson.scripts.build) {
+              const relPkg = path.relative(targetCwd, currentDir).replace(/\\/g, '/');
+              matchedPkgDirs.add(relPkg);
+              break;
+            }
+          } catch {}
+        }
+        currentDir = path.dirname(currentDir);
+      }
+    }
+    const projectsList = Array.from(matchedPkgDirs);
+    return {
+      isDotnet: false,
+      projects: projectsList,
+      summary: projectsList.length > 0
+        ? `定向 Monorepo 构建：已识别 ${projectsList.length} 个子包 (${projectsList.join(', ')})`
+        : '全量构建：执行项目根目录 build 脚本'
+    };
+  }
+
+  return { isDotnet: false, projects: [], summary: '无需预编译' };
+}
+
+/**
+ * 实时执行被审查仓库的真实构建/编译检查 (支持修改文件对应工程的精准定向增量编译)
  */
 apiRouter.post('/verification/build-check', async (req: Request, res: Response) => {
   try {
     const targetCwd = req.body.repoPath ? path.resolve(req.body.repoPath) : process.cwd();
-    const isDotnet = fs.existsSync(path.join(targetCwd, 'ACLPlugins.sln')) ||
-      (fs.existsSync(targetCwd) && fs.readdirSync(targetCwd).some(f => f.endsWith('.sln') || f.endsWith('.csproj')));
-    const isNode = fs.existsSync(path.join(targetCwd, 'package.json'));
+    const changedFiles: string[] = Array.isArray(req.body.files) ? req.body.files : [];
+    const targetInfo = findTargetProjectsForFiles(targetCwd, changedFiles);
 
     let cmd = '';
-    if (isDotnet) {
-      cmd = 'dotnet build --no-restore';
-    } else if (isNode) {
-      cmd = 'npm run build';
+    if (targetInfo.isDotnet) {
+      if (targetInfo.projects.length > 0) {
+        // 精准定向编译相关工程，大幅提升速度并避免全量解决方案锁盘与无关工程阻塞
+        cmd = targetInfo.projects.map(p => `dotnet build "${p}" --no-restore`).join(' && ');
+      } else {
+        cmd = 'dotnet build --no-restore';
+      }
+    } else if (fs.existsSync(path.join(targetCwd, 'package.json'))) {
+      if (targetInfo.projects.length > 0) {
+        cmd = targetInfo.projects.map(p => `npm --prefix "${p}" run build`).join(' && ');
+      } else {
+        cmd = 'npm run build';
+      }
     } else {
-      return res.json({ success: true, message: '无需独立构建', exitCode: 0, output: '静态项目无需预编译' });
+      return res.json({
+        success: true,
+        message: '无需独立构建',
+        exitCode: 0,
+        output: '静态项目无需预编译',
+        targetedSummary: targetInfo.summary
+      });
     }
 
     exec(cmd, { cwd: targetCwd, timeout: 60000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
@@ -296,7 +403,9 @@ apiRouter.post('/verification/build-check', async (req: Request, res: Response) 
         exitCode,
         output: combined.slice(-2000),
         warningCount: (combined.match(/warning/gi) || []).length,
-        errorCount: (combined.match(/error/gi) || []).length
+        errorCount: (combined.match(/error/gi) || []).length,
+        targetedProjects: targetInfo.projects,
+        targetedSummary: targetInfo.summary
       });
     });
   } catch (err: any) {
