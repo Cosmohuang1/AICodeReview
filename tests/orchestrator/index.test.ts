@@ -142,4 +142,35 @@ describe('runOrchestrator', () => {
     expect(results[0].category).toBe('bug');
     expect(results[0].severity).toBe('warning');
   });
+
+  it('respects concurrency limit when processing many chunks', async () => {
+    let activeTasks = 0;
+    let maxActiveTasks = 0;
+
+    vi.mocked(bugAgent).mockImplementation(async () => {
+      activeTasks++;
+      if (activeTasks > maxActiveTasks) {
+        maxActiveTasks = activeTasks;
+      }
+      // Simulate async work
+      await new Promise(resolve => setTimeout(resolve, 20));
+      activeTasks--;
+      return [];
+    });
+
+    const chunks: CodeChunk[] = Array.from({ length: 10 }, (_, i) => ({
+      file: `file${i}.ts`,
+      language: 'typescript',
+      diffContent: `+line${i}`,
+      fullContext: `line${i}`,
+      startLine: 1,
+      endLine: 1,
+      diffPosition: 1,
+    }));
+
+    const config = parseRepoConfig({});
+    await runOrchestrator(chunks, config);
+    expect(maxActiveTasks).toBeLessThanOrEqual(4);
+    expect(maxActiveTasks).toBeGreaterThan(1);
+  });
 });
