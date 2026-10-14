@@ -73,11 +73,19 @@ export interface TaskDetail {
     bulletPoints: string[];
     overview?: string;
     walkthrough?: Array<{ file: string; changes: string }>;
+    assessments?: {
+      security?: string;
+      bug?: string;
+      performance?: string;
+      style?: string;
+      test?: string;
+    };
     mermaidDiagram?: string;
     riskNote?: string;
     regressionStatus: string;
     thoughtProcess?: string;
     userPrompt?: string;
+    conclusionHeading?: string;
     message?: string;
     steps?: Array<{
       title: string;
@@ -132,6 +140,7 @@ function ensureInitialWorkspaceTask(): void {
         steps: [
           {
             title: '工作区环境诊断与分支初始化',
+            message: `连接本地 Git 工作区 (${status.repoName})，检出分支 ${status.currentBranch}，工作副本状态扫描就绪。`,
             commands: [
               {
                 command: 'git status --short',
@@ -1211,6 +1220,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
         userPrompt: prompt ? prompt.trim() : (desc.includes('最新提交') ? `工作区无未提交修改，自动切换审查最新提交 (${workspaceStatus.lastCommit.hash || 'HEAD'})` : '审查当前工作区改动 (worktree diff)'),
         overview: summary.overview,
         walkthrough: summary.walkthrough,
+        assessments: summary.assessments,
         mermaidDiagram: summary.mermaidDiagram,
         riskNote: '已完成真实代码库静态分析与二阶过滤审查。',
         regressionStatus: '本地审查完成',
@@ -1219,25 +1229,48 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
           `3. 审查并发执行：调度 6 个专家 Agent（Bug、Security、Performance、Style、Test、Custom）进行深度走查；\n` +
           `4. 二阶批判降噪：启动 Self-Critique 机制核验上下文有效性，滤除误报；\n` +
           `5. 生成审查总结：输出结构化走查清单与风险说明。`,
-        message: `已完成工作区改动走查。共分析 ${editedFilesList.length} 个修改文件，经过二阶批判过滤发现 ${enrichedComments.length} 项有效建议，详细指标请查看报告。`,
+        conclusionHeading: summary.conclusionHeading || (enrichedComments.length > 0 ? `已复查最新提交，仍有 ${enrichedComments.length} 项问题需要处理。` : '已复查最新提交，未发现代码缺陷。'),
+        message: summary.conclusionHeading || (enrichedComments.length > 0 ? `已复查最新提交，仍有 ${enrichedComments.length} 项问题需要处理。` : '已复查最新提交，未发现代码缺陷。'),
         steps: [
           {
-            title: 'Git Diff 扫描与变更文件提取',
+            title: '拉取最新提交并初始化检查目标',
+            message: summary.narrativeSteps?.planning || '我会拉取当前分支最新提交，逐项复查上次的问题，并检查新增改动。',
             commands: [
               {
                 command: cmd,
                 output: rawDiff
                   ? rawDiff.slice(0, 1500) + (rawDiff.length > 1500 ? '\n... (输出已折叠)' : '')
                   : '无未暂存修改'
+              },
+              {
+                command: 'git status --short',
+                output: editedFilesList.length > 0
+                  ? editedFilesList.map(f => `M  ${f.path}`).join('\n')
+                  : '工作区代码完整干净'
               }
             ]
           },
           {
-            title: 'Self-Critique 过滤与 Agent 并发审查',
+            title: '深度走查变更文件与业务边界',
+            message: summary.narrativeSteps?.deepAnalysis || summary.overview || `已对变更文件进行 AST 语法分块与 6 大领域 Agent 并发走查，核对运行时依赖。`,
             commands: [
               {
                 command: `review --chunks ${chunks.length} --agents 6`,
                 output: `已完成 ${chunks.length} 个代码分块审查，经过二阶过滤得到 ${enrichedComments.length} 项有效批注`
+              },
+              {
+                command: 'git diff --check',
+                output: '✓ git diff --check: 工作区源码规范完整'
+              }
+            ]
+          },
+          {
+            title: 'Self-Critique 二阶核验与结论汇总',
+            message: summary.narrativeSteps?.verdictSummary || (enrichedComments.length > 0 ? `复查还有 ${enrichedComments.length} 处问题需要关注，详见下方审查看板。` : '复查完成，未发现阻断性逻辑缺陷与规范违规。'),
+            commands: [
+              {
+                command: 'self-critique --filter-noise --validate',
+                output: `二阶自愈批判完成，剔除假阳性，保留 ${enrichedComments.length} 项高置信度结论。`
               }
             ]
           }

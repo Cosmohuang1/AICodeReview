@@ -29,6 +29,19 @@ export interface PRSummary {
   overview: string;
   walkthrough: Array<{ file: string; changes: string }>;
   mermaidDiagram: string;
+  assessments?: {
+    security?: string;
+    bug?: string;
+    performance?: string;
+    style?: string;
+    test?: string;
+  };
+  narrativeSteps?: {
+    planning?: string;
+    deepAnalysis?: string;
+    verdictSummary?: string;
+  };
+  conclusionHeading?: string;
 }
 
 export type AgentFn = (chunk: CodeChunk, config: RepoConfig) => Promise<ReviewComment[]>;

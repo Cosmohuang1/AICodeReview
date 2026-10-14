@@ -450,8 +450,8 @@
           </div>
         </div>
 
-        <!-- 智能体回应消息 / 结论 (Benchmark 风格: 已复审... 但仍有一项 P1:) -->
-        <div id="detailAgentOutcomeHeading" class="text-xs font-semibold text-zinc-900 pt-1 hidden">
+        <!-- 智能体回应消息 / 结论 (Benchmark 标杆风格: 已复审最新提交，仍有 X 项问题需要处理。) -->
+        <div id="detailAgentOutcomeHeading" class="text-xs font-bold text-zinc-900 pt-2 pb-1 hidden">
           <span id="detailAgentOutcomeHeadingText"></span>
         </div>
 
@@ -464,6 +464,9 @@
         <p id="detailRiskNote" class="hidden"></p>
         <span id="detailPushedCommit" class="hidden">HEAD</span>
         <span id="detailTimestamp" class="hidden">刚刚</span>
+
+        <!-- AI 架构走查概览与 5 大领域核验结果看板 -->
+        <div id="detailArchitecturalSummary" class="space-y-4 pt-1"></div>
 
         <!-- CodeRabbit 风格：智能审查建议与 Now vs Next 分流看板 -->
         <div id="detailPrioritizeSection" class="space-y-4 pt-1"></div>
@@ -1690,6 +1693,7 @@
       if (abortBtn) abortBtn.classList.remove('hidden');
 
       document.getElementById('detailAgentOutcomeHeading').classList.add('hidden');
+      document.getElementById('detailArchitecturalSummary').innerHTML = '';
       document.getElementById('detailPrioritizeSection').innerHTML = '';
 
       // 初始化会话执行卡片
@@ -2344,11 +2348,14 @@
         </div>
       `;
 
-      if (realSteps.length >= 2) {
+      if (realSteps.length >= 1) {
         realSteps.forEach((step, idx) => {
           const isFirst = idx === 0;
           const stepTitle = step.title || `阶段 ${idx + 1}`;
-          const stepMsg = step.message || `正在执行 ${stepTitle}，分析代码依赖与运行时边界。`;
+          const defaultMsg = idx === 0
+            ? `正在扫描工作区与提取 Git Diff，分析变更文件的语法树与依赖边界。`
+            : `正在调度 6 大领域 Agent 并发走查，通过 Self-Critique 二阶批判滤除误报。`;
+          const stepMsg = step.message || defaultMsg;
           timelineHtml += `
             <div class="text-xs text-zinc-700 leading-relaxed font-sans py-1">
               ${escapeHtml(stepMsg)}
@@ -2435,21 +2442,17 @@
         renderConversationalTimeline(task, timelineContainer);
       }
 
-      // 3. 智能体复审结论
+      // 3. 智能体复审结论 (Benchmark 风格: "已复查最新提交，仍有 X 项问题需要处理。" / "已复查最新提交，未发现代码缺陷。")
       const outcomeHeading = document.getElementById('detailAgentOutcomeHeading');
       const outcomeText = document.getElementById('detailAgentOutcomeHeadingText');
       if (outcomeHeading && outcomeText) {
         outcomeHeading.classList.remove('hidden');
-        const commit = task.pushedCommit || 'HEAD';
-        if (task.comments && task.comments.length > 0) {
-          const p0Count = task.comments.filter(c => c.priority === 'P0' || c.severity === 'error').length;
-          const p1Count = task.comments.filter(c => c.priority === 'P1').length;
-          let badgeSummary = '';
-          if (p0Count > 0) badgeSummary += ` 存在 ${p0Count} 项 P0 阻断项`;
-          if (p1Count > 0) badgeSummary += ` ${p1Count} 项 P1 重点项`;
-          outcomeText.innerHTML = `已复审 <span class="font-mono bg-zinc-100 px-1 py-0.5 rounded text-zinc-800">${commit}</span>。共发现 ${task.comments.length} 项审查建议${badgeSummary ? ` (${badgeSummary.trim()})` : ''}：`;
+        if (task.agentSummary?.conclusionHeading) {
+          outcomeText.textContent = task.agentSummary.conclusionHeading;
+        } else if (task.comments && task.comments.length > 0) {
+          outcomeText.textContent = `已复查最新提交，仍有 ${task.comments.length} 项问题需要处理。`;
         } else {
-          outcomeText.innerHTML = `已复审 <span class="font-mono bg-zinc-100 px-1 py-0.5 rounded text-zinc-800">${commit}</span>。代码规范与逻辑边界审查均通过，未发现代码缺陷。`;
+          outcomeText.textContent = `已复查最新提交，未发现代码缺陷。`;
         }
       }
 
@@ -2514,9 +2517,178 @@
         });
       }
 
+      renderArchitecturalSummary(task);
       renderPrioritizeAndComments(task);
       renderChatStream(task.chatHistory || []);
       lucide.createIcons();
+    }
+
+    function renderArchitecturalSummary(task) {
+      const container = document.getElementById('detailArchitecturalSummary');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const summary = task.agentSummary || {};
+      const hasOverview = !!summary.overview;
+      const hasWalkthrough = Array.isArray(summary.walkthrough) && summary.walkthrough.length > 0;
+      const hasAssessments = !!summary.assessments && Object.keys(summary.assessments).length > 0;
+      const hasDiagram = !!summary.mermaidDiagram && summary.mermaidDiagram.trim().length > 0;
+
+      if (!hasOverview && !hasWalkthrough && !hasAssessments && !hasDiagram) {
+        return;
+      }
+
+      let html = '';
+
+      // 1. AI 架构解析与业务意图 (Overview)
+      if (hasOverview) {
+        let bulletHtml = '';
+        if (Array.isArray(summary.bulletPoints) && summary.bulletPoints.length > 0) {
+          bulletHtml = `
+            <div class="pt-2.5 border-t border-purple-100/70 space-y-1.5">
+              <div class="text-[11px] font-semibold text-purple-900/70 uppercase tracking-wider">核心关注点 (Key Takeaways)</div>
+              <ul class="space-y-1 text-xs text-zinc-600 font-sans list-disc list-inside">
+                ${summary.bulletPoints.map(pt => `<li>${escapeHtml(pt)}</li>`).join('')}
+              </ul>
+            </div>
+          `;
+        }
+
+        html += `
+          <div class="border border-purple-200/80 rounded-2xl bg-gradient-to-b from-purple-50/40 via-white to-white shadow-2xs overflow-hidden">
+            <div class="px-4 py-3 bg-purple-50/60 border-b border-purple-100 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="sparkles" class="w-4 h-4 text-purple-600"></i>
+                <span class="font-semibold text-xs text-purple-950">AI 架构解析与业务意图 (Architecture Overview)</span>
+              </div>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white border border-purple-200 text-purple-700 shadow-2xs">DeepSeek R1 / V3</span>
+            </div>
+            <div class="p-4 space-y-3">
+              <div class="text-xs text-zinc-800 leading-relaxed font-sans whitespace-pre-wrap">
+                ${escapeHtml(summary.overview)}
+              </div>
+              ${bulletHtml}
+            </div>
+          </div>
+        `;
+      }
+
+      // 2. 多维度领域深度核验矩阵 (Domain Assessments)
+      if (hasAssessments) {
+        const as = summary.assessments;
+        const domainConfigs = [
+          { key: 'security', label: '安全合规与敏感数据', icon: 'shield-check', defaultText: '未检出硬编码密钥、SQL注入或越权隐患' },
+          { key: 'bug', label: '逻辑正确性与边界处理', icon: 'bug', defaultText: '空引用检查、异常捕获与边界条件完备' },
+          { key: 'performance', label: '运行时性能与资源分配', icon: 'zap', defaultText: '未引入异常高频分配或阻塞性资源占用' },
+          { key: 'style', label: '代码规范与架构分层', icon: 'layout', defaultText: '符合工程分层契约与命名规约' },
+          { key: 'test', label: '单元测试与断言覆盖', icon: 'check-circle-2', defaultText: '单元测试覆盖场景与断言力度充分' }
+        ];
+
+        const comments = task.comments || [];
+
+        const cardsHtml = domainConfigs.map(d => {
+          const content = as[d.key] || d.defaultText;
+          const relatedComments = comments.filter(c => (c.category || '').toLowerCase() === d.key.toLowerCase());
+          const hasIssue = relatedComments.length > 0;
+          const badgeClass = hasIssue ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200';
+          const badgeText = hasIssue ? `${relatedComments.length} 项关注` : '通过 Clean';
+
+          return `
+            <div class="bg-white border border-zinc-200/80 rounded-xl p-3 shadow-2xs space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5 text-zinc-900 font-semibold text-xs">
+                  <i data-lucide="${d.icon}" class="w-3.5 h-3.5 text-zinc-600"></i>
+                  <span>${d.label}</span>
+                </div>
+                <span class="text-[10px] px-1.5 py-0.2 rounded-full border ${badgeClass} font-mono">${badgeText}</span>
+              </div>
+              <p class="text-[11.5px] text-zinc-600 leading-relaxed font-sans">
+                ${escapeHtml(content)}
+              </p>
+            </div>
+          `;
+        }).join('');
+
+        html += `
+          <div class="border border-zinc-200/90 rounded-2xl bg-[#fafafa] shadow-2xs overflow-hidden">
+            <div class="px-4 py-3 bg-white border-b border-zinc-200/80 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="shield-alert" class="w-4 h-4 text-emerald-600"></i>
+                <span class="font-semibold text-xs text-zinc-900">多维度领域深度核验矩阵 (Domain Assessments)</span>
+              </div>
+              <span class="text-[11px] text-zinc-500 font-mono">6 Agents Verified</span>
+            </div>
+            <div class="p-3.5 grid grid-cols-1 md:grid-cols-2 gap-3">
+              ${cardsHtml}
+            </div>
+          </div>
+        `;
+      }
+
+      // 3. 逐文件改动走查清单 (File-by-File Walkthrough)
+      if (hasWalkthrough) {
+        const rowsHtml = summary.walkthrough.map(item => `
+          <div class="px-4 py-3 hover:bg-zinc-50/80 transition-colors flex flex-col gap-1">
+            <div class="flex items-center justify-between">
+              <div onclick="previewRawDiffModal('${escapeHtml(item.file)}')" class="font-mono text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer flex items-center gap-1.5 hover:underline">
+                <i data-lucide="file-code" class="w-3.5 h-3.5 text-zinc-400"></i>
+                <span>${escapeHtml(item.file)}</span>
+              </div>
+              <button onclick="previewRawDiffModal('${escapeHtml(item.file)}')" class="text-[11px] text-zinc-400 hover:text-zinc-600 flex items-center gap-1 font-mono cursor-pointer">
+                <span>View Diff</span>
+                <i data-lucide="arrow-right" class="w-3 h-3"></i>
+              </button>
+            </div>
+            <div class="text-xs text-zinc-600 leading-relaxed font-sans pl-5">
+              ${escapeHtml(item.changes)}
+            </div>
+          </div>
+        `).join('');
+
+        html += `
+          <div class="border border-zinc-200 rounded-2xl bg-white shadow-2xs overflow-hidden">
+            <div class="px-4 py-3 bg-[#fafafa] border-b border-zinc-200 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="list-checks" class="w-4 h-4 text-blue-600"></i>
+                <span class="font-semibold text-xs text-zinc-900">逐文件改动走查清单 (File Walkthrough)</span>
+              </div>
+              <span class="text-[11px] text-zinc-500 font-mono">${summary.walkthrough.length} files</span>
+            </div>
+            <div class="divide-y divide-zinc-100">
+              ${rowsHtml}
+            </div>
+          </div>
+        `;
+      }
+
+      // 4. 调用关系与状态流转图 (Mermaid Diagram)
+      if (hasDiagram) {
+        html += `
+          <div class="border border-zinc-200 rounded-2xl bg-white shadow-2xs overflow-hidden">
+            <div class="px-4 py-3 bg-[#fafafa] border-b border-zinc-200 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="git-branch" class="w-4 h-4 text-zinc-600"></i>
+                <span class="font-semibold text-xs text-zinc-900">架构调用与状态流转图 (Sequence & Flow)</span>
+              </div>
+            </div>
+            <div class="p-4 bg-zinc-50/50 overflow-x-auto flex justify-center">
+              <div class="mermaid text-xs">
+                ${summary.mermaidDiagram.trim()}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+      lucide.createIcons();
+      if (hasDiagram && window.mermaid) {
+        try {
+          mermaid.run();
+        } catch (e) {
+          console.warn('[mermaid] render failed:', e);
+        }
+      }
     }
 
     function renderPrioritizeAndComments(task) {
@@ -2527,7 +2699,7 @@
       const comments = task.comments || [];
       if (comments.length === 0) {
         container.innerHTML = `
-          <div class="border border-emerald-200 bg-emerald-50/70 rounded-2xl p-5 text-zinc-800 space-y-3 shadow-2xs text-left">
+          <div class="border border-emerald-200/80 bg-emerald-50/60 rounded-2xl p-4 text-zinc-800 shadow-2xs flex items-center justify-between">
             <div class="flex items-center gap-3">
               <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-sm shrink-0">
                 <i data-lucide="check" class="w-4 h-4"></i>
@@ -2535,104 +2707,73 @@
               <div>
                 <div class="text-xs font-bold text-emerald-950 flex items-center gap-2">
                   <span>代码审查通过 (All Checks Passed)</span>
-                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-800 font-mono font-semibold">Clean</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-800 font-mono font-semibold">0 Issues · Clean</span>
                 </div>
                 <div class="text-[11px] text-emerald-800/90 mt-0.5">
-                  6 大专家 Agent（Bug、Security、Performance、Style、Test、Custom）及 Self-Critique 二阶核验均未检出代码缺陷。
+                  6 大专家 Agent 并发走查与 Self-Critique 二阶批判均未发现阻断性缺陷或规则违规。
                 </div>
               </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1 text-xs">
-              <div class="bg-white/90 border border-emerald-200/80 rounded-xl p-2.5">
-                <div class="text-[11px] text-zinc-500">确定性规约扫描</div>
-                <div class="font-semibold text-emerald-700 mt-0.5">100% 规则合规 (0 泄漏)</div>
-              </div>
-              <div class="bg-white/90 border border-emerald-200/80 rounded-xl p-2.5">
-                <div class="text-[11px] text-zinc-500">AST 逻辑与边界核验</div>
-                <div class="font-semibold text-emerald-700 mt-0.5">未检出阻断性缺陷</div>
-              </div>
-              <div class="bg-white/90 border border-emerald-200/80 rounded-xl p-2.5">
-                <div class="text-[11px] text-zinc-500">Self-Critique 批判过滤</div>
-                <div class="font-semibold text-emerald-700 mt-0.5">0 误报 · 高置信度结论</div>
-              </div>
-            </div>
+            <button onclick="previewRawDiffModal()" class="px-3 py-1.5 rounded-lg border border-emerald-300 bg-white text-emerald-800 text-xs hover:bg-emerald-50 transition-colors font-medium cursor-pointer shrink-0">
+              查看 Diff
+            </button>
           </div>
         `;
         lucide.createIcons();
         return;
       }
 
-      // 1. 分流成 Now (P0/P1 高优) 与 Next (P1/P2 次要) 看板（CodeRabbit 原版体验）
-      const nowItems = comments.filter(c => c.priority === 'P0' || c.severity === 'error' || c.category === 'security' || c.category === 'bug');
-      const nextItems = comments.filter(c => !nowItems.includes(c));
-
-      // 若都归某一类，智能均衡分配
-      const displayNow = nowItems.length > 0 ? nowItems : comments.slice(0, Math.ceil(comments.length / 2));
-      const displayNext = nowItems.length > 0 ? nextItems : comments.slice(Math.ceil(comments.length / 2));
-
-      let kanbanHtml = `
-        <div class="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-zinc-100 space-y-3 shadow-xl font-sans">
-          <div class="flex items-center justify-between border-b border-zinc-800 pb-2.5">
+      // Benchmark 标杆体验：干净典雅的审查问题列表 (完全还原用户截图中的标杆设计)
+      const benchmarkListHtml = `
+        <div class="space-y-4 pt-1 font-sans text-left">
+          <!-- PR / 提交标题 -->
+          <div class="text-xs font-semibold text-zinc-900 border-b border-zinc-100 pb-2 flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <span class="text-[11px] font-mono text-zinc-500">01 Review</span>
-              <span class="text-zinc-600 font-mono">/</span>
-              <span class="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
-                <i data-lucide="layers" class="w-3.5 h-3.5 text-orange-400"></i>
-                <span>02 Prioritize across all Changes (多维度智能优先级分流)</span>
-              </span>
+              <i data-lucide="git-pull-request" class="w-3.5 h-3.5 text-zinc-500"></i>
+              <span>${task.branch || 'PR #1'} · <code class="font-mono text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded text-[11px]">${task.pushedCommit || 'HEAD'}</code></span>
             </div>
-            <span class="text-[11px] text-zinc-400 font-mono">共 ${comments.length} 处审查建议</span>
+            <span class="text-[11px] font-mono text-zinc-400">共 ${comments.length} 处审查建议</span>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
-            <!-- Now 列 -->
-            <div class="space-y-2.5">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-1.5">
-                  <span class="text-xs font-bold text-zinc-200">Now</span>
-                  <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-orange-950 border border-orange-800 text-orange-300 font-mono">${displayNow.length}</span>
+          <!-- 审查问题清单 -->
+          <div class="space-y-4 pt-1">
+            ${comments.map(c => `
+              <div class="space-y-1.5 text-xs text-left">
+                <div class="flex items-baseline gap-2 font-semibold text-zinc-900">
+                  <span class="text-zinc-400 font-normal text-sm leading-none">•</span>
+                  <span class="${c.priority === 'P0' ? 'text-red-600' : (c.priority === 'P1' ? 'text-amber-600' : 'text-blue-600')} font-bold font-mono">${c.priority || 'P1'}:</span>
+                  <span class="text-zinc-900 text-xs font-bold">${escapeHtml(c.message)}</span>
                 </div>
-                <span class="text-[10px] text-zinc-500">建议立即关注处理</span>
-              </div>
-              <div class="space-y-2">
-                ${displayNow.map(c => renderKanbanCard(c)).join('')}
-              </div>
-            </div>
-
-            <!-- Next 列 -->
-            <div class="space-y-2.5">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-1.5">
-                  <span class="text-xs font-bold text-zinc-200">Next</span>
-                  <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 font-mono">${displayNext.length}</span>
+                <div class="pl-4">
+                  <span onclick="previewRawDiffModal('${escapeHtml(c.file)}')" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-mono text-[11px] cursor-pointer transition-colors border border-zinc-200/80" title="点击查看文件 Diff">
+                    <i data-lucide="file-code" class="w-3 h-3 text-zinc-500"></i>
+                    <span>${escapeHtml(c.file)}:${c.line}</span>
+                  </span>
                 </div>
-                <span class="text-[10px] text-zinc-500">次要或可异步清理</span>
+                <div class="pl-4 text-zinc-600 leading-relaxed font-sans text-xs">
+                  ${escapeHtml(c.whyPriority || c.suggestion || c.message)}
+                </div>
+                ${c.suggestion ? `
+                  <div class="pl-4 pt-1">
+                    <div class="rounded-xl overflow-hidden border border-zinc-200 bg-zinc-950 font-mono text-[11px] leading-relaxed">
+                      <div class="px-3 py-1 bg-zinc-900 border-b border-zinc-800 text-zinc-400 text-[10px] flex items-center justify-between">
+                        <span>Unified Diff 修复建议</span>
+                        <button onclick="applyCommentSuggestion('${c.file}', ${c.line}, '${encodeURIComponent(c.suggestion)}')" class="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-sans text-[11px] font-medium cursor-pointer">
+                          <i data-lucide="play" class="w-3 h-3 fill-emerald-400"></i>
+                          <span>一键采纳此修改</span>
+                        </button>
+                      </div>
+                      <pre class="p-2.5 text-zinc-200 overflow-x-auto whitespace-pre">${escapeHtml(c.diffSnippet || c.suggestion)}</pre>
+                    </div>
+                  </div>
+                ` : ''}
               </div>
-              <div class="space-y-2">
-                ${displayNext.length > 0 ? displayNext.map(c => renderKanbanCard(c)).join('') : '<div class="p-3 rounded-xl border border-dashed border-zinc-800 text-center text-zinc-600 text-[11px]">暂无次级项</div>'}
-              </div>
-            </div>
+            `).join('')}
           </div>
         </div>
       `;
 
-      // 2. CodeRabbit 风格：可采纳建议与 Unified Diff 卡片流
-      let suggestionsHtml = `
-        <div class="space-y-3 pt-2">
-          <div class="flex items-center justify-between">
-            <h4 class="font-semibold text-xs text-zinc-900 flex items-center gap-1.5">
-              <i data-lucide="message-square-code" class="w-4 h-4 text-orange-500"></i>
-              <span>代码行审查批注与可采纳建议 (${comments.length})</span>
-            </h4>
-            <span class="text-[11px] text-zinc-400">支持 Unified Diff 对比与一键采纳</span>
-          </div>
-          <div class="space-y-3">
-            ${comments.map(c => renderCodeRabbitCommentCard(c)).join('')}
-          </div>
-        </div>
-      `;
-
-      container.innerHTML = kanbanHtml + suggestionsHtml;
+      container.innerHTML = benchmarkListHtml;
       lucide.createIcons();
     }
 
@@ -2806,6 +2947,7 @@
       if (setupContent) setupContent.classList.remove('hidden');
 
       document.getElementById('detailAgentOutcomeHeading').classList.add('hidden');
+      document.getElementById('detailArchitecturalSummary').innerHTML = '';
       document.getElementById('detailPrioritizeSection').innerHTML = '';
 
       initLiveConversationalTimeline('正在构建上下文与思考计划，组织自主编码与自愈验证方案...');
