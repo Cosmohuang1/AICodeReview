@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { execSync } from 'node:child_process';
+import { execSync, exec } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseDiff } from '../parser/diff.parser.js';
@@ -15,8 +15,6 @@ import { deduplicateComments } from '../filter/deduplicator.js';
 import { anchorComments } from '../parser/position.anchorer.js';
 import { defaultSqliteStorage } from '../storage/sqlite.storage.js';
 
-
-
 import { GitService, type WorkspaceStatus } from '../services/git.service.js';
 import { AgentLoopService, type AgentTaskResult } from '../services/agent-loop.service.js';
 import { runReactEngine } from '../agent-engine/react-engine.js';
@@ -25,12 +23,14 @@ import { defaultReactStreamer, type StreamEventType } from '../agent-engine/reac
 import os from 'node:os';
 import { PatchService } from '../services/patch.service.js';
 import { ReviewService } from '../services/review.service.js';
+import { TestRunnerService } from '../services/test-runner.service.js';
 
 export const apiRouter = Router();
 
 const gitService = new GitService();
 const patchService = new PatchService();
 const agentLoopService = new AgentLoopService();
+const testRunnerService = new TestRunnerService();
 
 let activeRepoPath: string | null = null;
 try {
@@ -262,6 +262,84 @@ apiRouter.post('/git/checkout', (req: Request, res: Response) => {
       success: true,
       currentBranch: result.current,
       message: `已成功切换到分支: ${result.current}`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 实时执行被审查仓库的真实构建/编译检查
+ */
+apiRouter.post('/verification/build-check', async (req: Request, res: Response) => {
+  try {
+    const targetCwd = req.body.repoPath ? path.resolve(req.body.repoPath) : process.cwd();
+    const isDotnet = fs.existsSync(path.join(targetCwd, 'ACLPlugins.sln')) ||
+      (fs.existsSync(targetCwd) && fs.readdirSync(targetCwd).some(f => f.endsWith('.sln') || f.endsWith('.csproj')));
+    const isNode = fs.existsSync(path.join(targetCwd, 'package.json'));
+
+    let cmd = '';
+    if (isDotnet) {
+      cmd = 'dotnet build --no-restore';
+    } else if (isNode) {
+      cmd = 'npm run build';
+    } else {
+      return res.json({ success: true, message: '无需独立构建', exitCode: 0, output: '静态项目无需预编译' });
+    }
+
+    exec(cmd, { cwd: targetCwd, timeout: 60000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const exitCode = error ? (typeof error.code === 'number' ? error.code : 1) : 0;
+      const combined = `${stdout}\n${stderr}`.trim();
+      res.json({
+        success: exitCode === 0,
+        cmd,
+        exitCode,
+        output: combined.slice(-2000),
+        warningCount: (combined.match(/warning/gi) || []).length,
+        errorCount: (combined.match(/error/gi) || []).length
+      });
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 实时执行被审查仓库的真实测试套件并返回真实统计
+ */
+apiRouter.post('/verification/test-run', async (req: Request, res: Response) => {
+  try {
+    const targetCwd = req.body.repoPath ? path.resolve(req.body.repoPath) : process.cwd();
+    const hasPackageJson = fs.existsSync(path.join(targetCwd, 'package.json'));
+    const cmd = req.body.cmd || (hasPackageJson ? 'npm test' : 'dotnet test');
+    const result = await testRunnerService.runTestSuite(targetCwd, cmd);
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 动态获取系统真实运行环境与指标
+ */
+apiRouter.get('/system/environment', (req: Request, res: Response) => {
+  try {
+    const targetCwd = (req.query.repoPath as string) || process.cwd();
+    const isGit = gitService.isGitRepo(targetCwd);
+    let gitVersion = 'Git 未安装';
+    try {
+      gitVersion = execSync('git --version', { cwd: targetCwd, encoding: 'utf-8' }).trim();
+    } catch {}
+
+    res.json({
+      success: true,
+      nodeVersion: process.version,
+      platform: `${process.platform} (${os.arch()})`,
+      gitVersion,
+      isGit,
+      cwd: targetCwd,
+      modelOnline: !!process.env.DEEPSEEK_API_KEY,
+      modelName: process.env.DEEPSEEK_MODEL || 'DeepSeek'
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -842,8 +920,10 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     return res.status(400).json({ error: `指定仓库路径不存在: ${targetCwd}` });
   }
 
-  // 1. 如果用户输入了具体编码/修改指令，直接触发真实 Coding Agent 循环（写盘 + 跑测 + 提交）
-  if (prompt && prompt.trim().length > 0) {
+  const isReviewIntent = !prompt || /(?:review|审查|走查|检查|看下代码|帮我看|找bug|分析代码|评阅)/i.test(prompt);
+
+  // 1. 只有当用户明确输入了具体编码/修改需求指令时，才触发真实 Coding Agent 循环（写盘 + 跑测 + 提交）
+  if (prompt && prompt.trim().length > 0 && !isReviewIntent) {
     try {
       const taskResult = await agentLoopService.executeTask({
         cwd: targetCwd,
@@ -892,8 +972,8 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     }
   }
 
-  // 2. 如果是纯审查请求 (无修改指令)，执行审查流水线
-  const { cmd, desc } = getDiffCommand(mode, from, to);
+  // 2. 审查请求 (包含包含审查意图的自定义提示词)，执行端到端审查流水线
+  let { cmd, desc } = getDiffCommand(mode, from, to);
   const sessionId = req.body.sessionId;
   const broadcast = (event: StreamEventType, data: any) => {
     if (sessionId) {
@@ -905,10 +985,31 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     const repoName = path.basename(targetCwd) || 'AICodeReview';
     broadcast('start', { title: '启动代码审查分析', repo: repoName });
     broadcast('step', { step: 1, name: 'Diff 扫描与解析' });
-    broadcast('think', { text: `正在扫描 ${repoName} 工作区改动：执行 ${cmd}，解析代码语法树与变更文件...` });
-    broadcast('tool_call', { name: 'git_diff_scanner', args: { command: cmd, cwd: targetCwd } });
 
-    const rawDiff = execSync(cmd, { cwd: targetCwd, maxBuffer: 10 * 1024 * 1024 }).toString('utf-8');
+    let rawDiff = '';
+    try {
+      rawDiff = execSync(cmd, { cwd: targetCwd, maxBuffer: 10 * 1024 * 1024 }).toString('utf-8');
+    } catch {
+      // 容错处理
+    }
+
+    // 工作区无未提交改动时，自动回退走查最新一次提交 (git show HEAD)
+    if (!rawDiff.trim() && mode === 'worktree') {
+      try {
+        const headCommit = execSync('git rev-parse --short HEAD', { cwd: targetCwd, encoding: 'utf-8' }).trim();
+        if (headCommit) {
+          cmd = 'git show HEAD';
+          desc = `工作区无未提交改动，已自动切换走查最新提交 (${headCommit})`;
+          broadcast('think', { text: `当前工作区干净（无未提交修改），自动切换走查最近提交 commit: ${headCommit}...` });
+          rawDiff = execSync(cmd, { cwd: targetCwd, maxBuffer: 10 * 1024 * 1024 }).toString('utf-8');
+        }
+      } catch {
+        // 忽略异常
+      }
+    }
+
+    broadcast('think', { text: `正在扫描 ${repoName}：执行 ${cmd}，解析代码语法树与变更文件...` });
+    broadcast('tool_call', { name: 'git_diff_scanner', args: { command: cmd, cwd: targetCwd } });
     const parsedFiles = parseDiff(rawDiff);
     const workspaceStatus = gitService.getWorkspaceStatus(targetCwd);
 
@@ -987,7 +1088,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
 
     const newTaskItem: TaskDetail = {
       id: `rev_${Date.now()}`,
-      title: '审查当前工作区改动',
+      title: prompt ? `审查: ${prompt.trim().slice(0, 30)}` : (desc.includes('最新提交') ? `审查最新提交 (${workspaceStatus.lastCommit.hash || 'HEAD'})` : '审查当前工作区改动'),
       repo: repoName,
       branch: workspaceStatus.currentBranch,
       pushedCommit: workspaceStatus.lastCommit.hash || 'HEAD',
@@ -998,6 +1099,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
       agentSummary: {
         commit: workspaceStatus.lastCommit.hash || 'HEAD',
         bulletPoints: bulletList,
+        userPrompt: prompt ? prompt.trim() : (desc.includes('最新提交') ? `工作区无未提交修改，自动切换审查最新提交 (${workspaceStatus.lastCommit.hash || 'HEAD'})` : '审查当前工作区改动 (worktree diff)'),
         overview: summary.overview,
         walkthrough: summary.walkthrough,
         mermaidDiagram: summary.mermaidDiagram,

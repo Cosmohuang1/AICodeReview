@@ -107,7 +107,7 @@ export class ReviewService {
 
     // 3. 计算改动影响权重 (Impact Score)：逻辑代码与高变动密度优先
     const scoredFiles = eligibleFiles.map(f => {
-      const isCoreLogic = /\.(cs|ts|tsx|js|jsx|go|java|py|rs|cpp|c|php|rb)$/i.test(f.filePath);
+      const isCoreLogic = /\.(cs|ts|tsx|js|jsx|go|java|py|rs|cpp|c|php|rb|razor|vue|html)$/i.test(f.filePath);
       const isServiceOrAuth = /(service|controller|auth|token|security|manager|model|handler|engine|api)/i.test(f.filePath);
       const fileAdds = f.hunks.reduce((acc, h) => acc + h.newLines.length, 0);
       const fileDels = f.hunks.reduce((acc, h) => acc + Math.max(0, h.rawHunk.split('\n').filter(l => l.startsWith('-')).length), 0);
