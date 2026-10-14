@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { extractJsonArray, callDeepSeek } from '../../src/agents/base.js';
+import { extractJsonArray, callDeepSeek, _resetClient } from '../../src/agents/base.js';
 
 const mockCreate = vi.fn();
 
@@ -68,6 +68,7 @@ describe('callDeepSeek', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetClient();
     process.env = { ...originalEnv };
   });
 
@@ -126,9 +127,21 @@ describe('callDeepSeek', () => {
     });
   });
 
-  it('propagates error when OpenAI API fails', async () => {
-    mockCreate.mockRejectedValueOnce(new Error('API failure'));
+  it('retries on rate limit or network error with backoff and succeeds', async () => {
+    mockCreate
+      .mockRejectedValueOnce(new Error('429 Too Many Requests'))
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: 'retry success' } }],
+      });
 
-    await expect(callDeepSeek('failing prompt')).rejects.toThrow('API failure');
+    const result = await callDeepSeek('retry prompt', 10_000, 2);
+    expect(result).toBe('retry success');
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it('propagates error when all retry attempts fail', async () => {
+    mockCreate.mockRejectedValue(new Error('API failure'));
+
+    await expect(callDeepSeek('failing prompt', 10_000, 1)).rejects.toThrow('API failure');
   });
 });

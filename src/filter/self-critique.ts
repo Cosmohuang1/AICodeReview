@@ -1,5 +1,5 @@
 import { callDeepSeek, extractJsonArray } from '../agents/base.js';
-import type { ReviewComment, CodeChunk } from '../agents/types.js';
+import type { ReviewComment, CodeChunk, Severity, Category } from '../agents/types.js';
 import type { RepoConfig } from '../config/schema.js';
 
 export async function selfCritique(
@@ -49,6 +49,9 @@ ${JSON.stringify(probabilisticComments, null, 2)}
     const filtered = extractJsonArray<Partial<ReviewComment>>(raw);
     const results: ReviewComment[] = [...deterministicComments];
 
+    const validSeverities = new Set<Severity>(['error', 'warning', 'info']);
+    const validCategories = new Set<Category>(['bug', 'security', 'performance', 'style', 'test', 'custom']);
+
     for (const item of filtered) {
       const confidence = typeof item.confidence === 'number' ? item.confidence : 0;
       if (confidence < config.selfCritiqueThreshold) {
@@ -59,6 +62,16 @@ ${JSON.stringify(probabilisticComments, null, 2)}
         c => c.file === item.file && c.line === item.line
       );
 
+      const resolvedSeverity: Severity =
+        item.severity && validSeverities.has(item.severity as Severity)
+          ? (item.severity as Severity)
+          : original?.severity ?? 'warning';
+
+      const resolvedCategory: Category =
+        item.category && validCategories.has(item.category as Category)
+          ? (item.category as Category)
+          : original?.category ?? 'bug';
+
       if (original) {
         results.push({
           ...original,
@@ -66,19 +79,19 @@ ${JSON.stringify(probabilisticComments, null, 2)}
           file: item.file || original.file,
           line: typeof item.line === 'number' ? item.line : original.line,
           side: 'RIGHT',
-          severity: (item.severity as any) || original.severity,
-          category: (item.category as any) || original.category,
+          severity: resolvedSeverity,
+          category: resolvedCategory,
           message: item.message || original.message,
           suggestion: item.suggestion !== undefined ? item.suggestion : original.suggestion,
           confidence,
         });
-      } else if (item.file && typeof item.line === 'number' && item.message && item.category && item.severity) {
+      } else if (item.file && typeof item.line === 'number' && item.message) {
         results.push({
           file: item.file,
           line: item.line,
           side: 'RIGHT',
-          severity: item.severity,
-          category: item.category,
+          severity: resolvedSeverity,
+          category: resolvedCategory,
           message: item.message,
           suggestion: item.suggestion,
           confidence,

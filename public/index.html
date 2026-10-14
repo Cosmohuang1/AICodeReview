@@ -1580,8 +1580,8 @@
     function toggleAnalytics() {
       const sub = document.getElementById('analyticsSubmenu');
       const chev = document.getElementById('analyticsChevron');
-      sub.classList.toggle('hidden');
-      chev.classList.toggle('rotate-180');
+      if (sub) sub.classList.toggle('hidden');
+      if (chev) chev.classList.toggle('rotate-180');
     }
 
     // 仓库管理逻辑
@@ -2578,8 +2578,15 @@
       }
     });
 
-    function previewRawDiffModal() {
-      const diffContent = currentTask?.rawDiff || '// 当前无 Diff 详细记录';
+    function previewRawDiffModal(targetFilePath) {
+      let diffContent = currentTask?.rawDiff || '// 当前无 Diff 详细记录';
+      if (targetFilePath && typeof targetFilePath === 'string' && currentTask?.rawDiff) {
+        const parts = currentTask.rawDiff.split(/(?=diff --git)/g);
+        const matched = parts.find(p => p.includes(`b/${targetFilePath}`) || p.includes(`a/${targetFilePath}`));
+        if (matched) {
+          diffContent = matched.trim();
+        }
+      }
       document.getElementById('diffModalContent').textContent = diffContent;
       document.getElementById('diffModal').classList.remove('hidden');
       lucide.createIcons();

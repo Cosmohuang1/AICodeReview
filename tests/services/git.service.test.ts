@@ -93,6 +93,12 @@ describe('GitService', () => {
 
     const statusAfter = gitService.getWorkspaceStatus(tempRepoDir);
     expect(statusAfter.currentBranch).toBe(branchName);
+
+    // 测试带引号、特殊字符与换行符的安全 commit (防 Shell 注入)
+    fs.appendFileSync(path.join(tempRepoDir, 'feature.js'), '// change 2\n');
+    const complexMsg = 'feat: "quotes" & `backticks` and \\slashes\n\n- bullet point 1';
+    const secondHash = gitService.commitAll(tempRepoDir, complexMsg);
+    expect(secondHash.length).toBeGreaterThan(0);
     expect(statusAfter.hasChanges).toBe(false);
     expect(statusAfter.lastCommit.message).toBe('feat: add feature.js');
   });

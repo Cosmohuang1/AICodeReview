@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import crypto from 'crypto';
 import { runReviewPipeline } from '../pipeline.js';
 import type { PRContext } from '../github/diff.fetcher.js';
+import { defaultSqliteStorage } from '../storage/sqlite.storage.js';
 
 export function verifySignature(
   body: Buffer | string,
@@ -73,6 +74,35 @@ export async function webhookHandler(req: Request, res: Response): Promise<void>
   setImmediate(async () => {
     try {
       await runReviewPipeline(ctx);
+
+      try {
+        const taskId = `gh_pr_${ctx.owner}_${ctx.repo}_${ctx.prNumber}_${Date.now()}`;
+        defaultSqliteStorage.saveTask({
+          id: taskId,
+          title: `PR #${ctx.prNumber}: ${ctx.prTitle}`,
+          repo: `${ctx.owner}/${ctx.repo}`,
+          branch: payload.pull_request?.head?.ref || `pr-${ctx.prNumber}`,
+          pushedCommit: payload.pull_request?.head?.sha || 'HEAD',
+          author: payload.pull_request?.user?.login || 'GitHub User',
+          workedTime: '刚刚完成',
+          timestamp: '刚刚',
+          status: 'completed',
+          agentSummary: {
+            commit: payload.pull_request?.head?.sha || 'HEAD',
+            bulletPoints: [`GitHub PR #${ctx.prNumber} 审查完成并已推送到 GitHub`],
+            riskNote: '已通过 GitHub App Webhook 完成审查并发布评论。',
+            regressionStatus: 'PR 审查通过',
+          },
+          totalAdditions: payload.pull_request?.additions || 0,
+          totalDeletions: payload.pull_request?.deletions || 0,
+          editedFiles: [],
+          comments: [],
+          chatHistory: [],
+          rawDiff: '',
+        });
+      } catch (storageErr) {
+        console.warn('[ai-review] 写入 SQLite 任务历史失败:', storageErr);
+      }
     } catch (err: unknown) {
       console.error('[ai-review] Pipeline error:', err);
     }

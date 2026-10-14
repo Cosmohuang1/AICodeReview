@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -302,7 +302,7 @@ export class GitService {
    */
   createBranch(repoPath: string, branchName: string): void {
     const resolvedPath = path.resolve(repoPath);
-    execSync(`git checkout -b "${branchName}"`, { cwd: resolvedPath, stdio: 'ignore' });
+    execFileSync('git', ['checkout', '-b', branchName], { cwd: resolvedPath, stdio: 'ignore' });
   }
 
   /**
@@ -310,8 +310,8 @@ export class GitService {
    */
   commitAll(repoPath: string, message: string): string {
     const resolvedPath = path.resolve(repoPath);
-    execSync('git add -A', { cwd: resolvedPath });
-    execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: resolvedPath });
-    return execSync('git rev-parse --short HEAD', { cwd: resolvedPath }).toString().trim();
+    execFileSync('git', ['add', '-A'], { cwd: resolvedPath });
+    execFileSync('git', ['commit', '-m', message], { cwd: resolvedPath });
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: resolvedPath, encoding: 'utf-8' }).trim();
   }
 }

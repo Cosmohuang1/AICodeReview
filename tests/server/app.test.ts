@@ -68,4 +68,11 @@ describe('app server', () => {
     const data = await res.json();
     expect(data).toEqual({ message: 'Event ignored' });
   });
+
+  it('GET /api/non-existent returns 404 with JSON error', async () => {
+    const res = await fetch(`${baseUrl}/api/non-existent-endpoint-test`);
+    expect(res.status).toBe(404);
+    const data = await res.json();
+    expect(data.error).toBe('Endpoint not found');
+  });
 });

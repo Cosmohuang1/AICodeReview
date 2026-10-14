@@ -53,6 +53,19 @@ describe('buildPRBody', () => {
     expect(result).not.toContain('### 🔄 调用流程');
     expect(result).not.toContain('```mermaid');
   });
+
+  it('supports English headings when language is en', () => {
+    const withDiagram: PRSummary = {
+      overview: 'Refactored auth module.',
+      walkthrough: [{ file: 'src/auth.ts', changes: 'Updated token expiry' }],
+      mermaidDiagram: 'graph TD; A-->B',
+    };
+    const result = buildPRBody(withDiagram, '', 'en');
+    expect(result).toContain('## 🤖 AI Review Summary');
+    expect(result).toContain('### 📋 Walkthrough');
+    expect(result).toContain('| File | Changes |');
+    expect(result).toContain('### 🔄 Sequence Diagram');
+  });
 });
 
 describe('buildInlineCommentBody', () => {

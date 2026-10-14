@@ -115,11 +115,11 @@ export class SqliteStorage {
       task.workedTime,
       task.timestamp,
       task.status,
-      task.totalAdditions,
-      task.totalDeletions,
-      JSON.stringify(task.agentSummary),
-      JSON.stringify(task.editedFiles),
-      task.rawDiff,
+      task.totalAdditions ?? 0,
+      task.totalDeletions ?? 0,
+      JSON.stringify(task.agentSummary ?? {}),
+      JSON.stringify(task.editedFiles ?? []),
+      task.rawDiff ?? null,
       now
     );
 
