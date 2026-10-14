@@ -253,8 +253,8 @@
               <i data-lucide="chevron-down" class="w-3 h-3 text-zinc-400"></i>
             </button>
 
-            <!-- 浮动秒切仓库下拉面板 -->
-            <div id="repoPillDropdown" class="absolute right-0 bottom-full mb-2 w-72 bg-white border border-zinc-200 rounded-xl shadow-xl p-2 hidden z-50 text-xs text-left">
+            <!-- 浮动秒切仓库下拉面板 (默认向下弹出，防止被顶部视口截断遮挡) -->
+            <div id="repoPillDropdown" class="absolute right-0 top-full mt-2 w-72 bg-white border border-zinc-200 rounded-xl shadow-xl p-2 hidden z-50 text-xs text-left">
               <div class="px-2 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center justify-between border-b border-zinc-100 pb-1.5 mb-1">
                 <span>切换工作代码仓库</span>
                 <button type="button" onclick="openAddRepoModal(); closeRepoDropdown();" class="text-orange-600 hover:text-orange-700 font-medium normal-case flex items-center gap-1 cursor-pointer">
@@ -275,8 +275,8 @@
               <i data-lucide="chevron-down" class="w-3 h-3 text-zinc-400"></i>
             </button>
 
-            <!-- 浮动秒切分支下拉面板 -->
-            <div id="branchPillDropdown" class="absolute right-0 bottom-full mb-2 w-72 bg-white border border-zinc-200 rounded-xl shadow-xl p-2.5 hidden z-50 text-xs text-left">
+            <!-- 浮动秒切分支下拉面板 (默认向下弹出，防止被顶部视口截断遮挡) -->
+            <div id="branchPillDropdown" class="absolute right-0 top-full mt-2 w-72 bg-white border border-zinc-200 rounded-xl shadow-xl p-2.5 hidden z-50 text-xs text-left">
               <div class="px-1 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider flex items-center justify-between border-b border-zinc-100 pb-1.5 mb-2">
                 <span>切换 Git 分支</span>
                 <span id="branchCountLabel" class="text-[10px] text-zinc-400 font-mono">0 个分支</span>
@@ -1181,6 +1181,23 @@
       }
     }
 
+    function adjustDropdownPosition(btn, dropdown) {
+      if (!btn || !dropdown) return;
+      const btnRect = btn.getBoundingClientRect();
+      const dropdownEstimatedHeight = 280;
+      const spaceBelow = window.innerHeight - btnRect.bottom;
+      const spaceAbove = btnRect.top;
+
+      // 如果下方空间小于预估高度，且上方空间大于下方空间，则向上展开；否则向下展开
+      if (spaceBelow < dropdownEstimatedHeight && spaceAbove > spaceBelow) {
+        dropdown.classList.remove('top-full', 'mt-2');
+        dropdown.classList.add('bottom-full', 'mb-2');
+      } else {
+        dropdown.classList.remove('bottom-full', 'mb-2');
+        dropdown.classList.add('top-full', 'mt-2');
+      }
+    }
+
     function toggleBranchDropdown(e) {
       if (e) e.stopPropagation();
       closeRepoDropdown();
@@ -1188,6 +1205,7 @@
       if (!dd) return;
       dd.classList.toggle('hidden');
       if (!dd.classList.contains('hidden')) {
+        adjustDropdownPosition(document.getElementById('btnBranchPill'), dd);
         const searchInput = document.getElementById('branchSearchInput');
         if (searchInput) {
           searchInput.value = '';
@@ -1277,6 +1295,9 @@
       const dd = document.getElementById('repoPillDropdown');
       if (!dd) return;
       dd.classList.toggle('hidden');
+      if (!dd.classList.contains('hidden')) {
+        adjustDropdownPosition(document.getElementById('btnRepoPill'), dd);
+      }
       lucide.createIcons();
     }
 
