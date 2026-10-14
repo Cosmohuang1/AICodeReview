@@ -24,6 +24,8 @@ import os from 'node:os';
 import { PatchService } from '../services/patch.service.js';
 import { ReviewService } from '../services/review.service.js';
 import { TestRunnerService } from '../services/test-runner.service.js';
+import { mcpManager } from '../mcp/client.js';
+import { generateMcpIdeConfig } from '../mcp/config.js';
 
 export const apiRouter = Router();
 
@@ -1317,3 +1319,48 @@ apiRouter.post('/patch/apply-suggestion', (req: Request, res: Response) => {
     res.status(status).json({ error: `应用建议失败: ${err.message}` });
   }
 });
+
+// MCP (Model Context Protocol) 真实服务状态查询
+apiRouter.get('/mcp/status', async (_req: Request, res: Response) => {
+  try {
+    const status = mcpManager.getStatus();
+    if (!status.running) {
+      await mcpManager.start().catch(() => {});
+    }
+    res.json(mcpManager.getStatus());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || '获取 MCP 状态失败' });
+  }
+});
+
+// MCP 工具调用网关 (供前端测试、CLI 或外部集成调用)
+apiRouter.post('/mcp/call', async (req: Request, res: Response) => {
+  try {
+    const { name, arguments: toolArgs } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: '缺少工具名称 (name)' });
+    }
+    const result = await mcpManager.callTool(name, toolArgs || {});
+    res.json({
+      success: true,
+      tool: name,
+      result,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || '调用 MCP 工具失败' });
+  }
+});
+
+// 获取供外部 IDE (Cursor / Claude Desktop / Antigravity) 配置 MCP 客户端的代码片段
+apiRouter.get('/mcp/config', (_req: Request, res: Response) => {
+  try {
+    const config = generateMcpIdeConfig();
+    res.json({
+      success: true,
+      config,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || '生成 MCP 配置失败' });
+  }
+});
+

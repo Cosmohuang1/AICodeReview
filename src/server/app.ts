@@ -44,10 +44,19 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
+import { mcpManager } from '../mcp/client.js';
+
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`[ai-review] Server listening on port ${PORT}`);
+    try {
+      await mcpManager.start();
+      const status = mcpManager.getStatus();
+      console.log(`[ai-review] ✓ 1 MCP Server initialized (PID: ${status.pid}, ${status.toolCount} tools registered)`);
+    } catch (err: any) {
+      console.warn('[ai-review] MCP Server initialization warning:', err.message);
+    }
   });
 }
 
