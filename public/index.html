@@ -2538,97 +2538,11 @@
         return;
       }
 
-      let html = '';
-
-      // 1. AI 架构解析与业务意图 (Overview)
-      if (hasOverview) {
-        let bulletHtml = '';
-        if (Array.isArray(summary.bulletPoints) && summary.bulletPoints.length > 0) {
-          bulletHtml = `
-            <div class="pt-2.5 border-t border-purple-100/70 space-y-1.5">
-              <div class="text-[11px] font-semibold text-purple-900/70 uppercase tracking-wider">核心关注点 (Key Takeaways)</div>
-              <ul class="space-y-1 text-xs text-zinc-600 font-sans list-disc list-inside">
-                ${summary.bulletPoints.map(pt => `<li>${escapeHtml(pt)}</li>`).join('')}
-              </ul>
-            </div>
-          `;
-        }
-
-        html += `
-          <div class="border border-purple-200/80 rounded-2xl bg-gradient-to-b from-purple-50/40 via-white to-white shadow-2xs overflow-hidden">
-            <div class="px-4 py-3 bg-purple-50/60 border-b border-purple-100 flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i data-lucide="sparkles" class="w-4 h-4 text-purple-600"></i>
-                <span class="font-semibold text-xs text-purple-950">AI 架构解析与业务意图 (Architecture Overview)</span>
-              </div>
-              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white border border-purple-200 text-purple-700 shadow-2xs">DeepSeek R1 / V3</span>
-            </div>
-            <div class="p-4 space-y-3">
-              <div class="text-xs text-zinc-800 leading-relaxed font-sans whitespace-pre-wrap">
-                ${escapeHtml(summary.overview)}
-              </div>
-              ${bulletHtml}
-            </div>
-          </div>
-        `;
-      }
-
-      // 2. 多维度领域深度核验矩阵 (Domain Assessments)
-      if (hasAssessments) {
-        const as = summary.assessments;
-        const domainConfigs = [
-          { key: 'security', label: '安全合规与敏感数据', icon: 'shield-check', defaultText: '未检出硬编码密钥、SQL注入或越权隐患' },
-          { key: 'bug', label: '逻辑正确性与边界处理', icon: 'bug', defaultText: '空引用检查、异常捕获与边界条件完备' },
-          { key: 'performance', label: '运行时性能与资源分配', icon: 'zap', defaultText: '未引入异常高频分配或阻塞性资源占用' },
-          { key: 'style', label: '代码规范与架构分层', icon: 'layout', defaultText: '符合工程分层契约与命名规约' },
-          { key: 'test', label: '单元测试与断言覆盖', icon: 'check-circle-2', defaultText: '单元测试覆盖场景与断言力度充分' }
-        ];
-
-        const comments = task.comments || [];
-
-        const cardsHtml = domainConfigs.map(d => {
-          const content = as[d.key] || d.defaultText;
-          const relatedComments = comments.filter(c => (c.category || '').toLowerCase() === d.key.toLowerCase());
-          const hasIssue = relatedComments.length > 0;
-          const badgeClass = hasIssue ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200';
-          const badgeText = hasIssue ? `${relatedComments.length} 项关注` : '通过 Clean';
-
-          return `
-            <div class="bg-white border border-zinc-200/80 rounded-xl p-3 shadow-2xs space-y-2">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-1.5 text-zinc-900 font-semibold text-xs">
-                  <i data-lucide="${d.icon}" class="w-3.5 h-3.5 text-zinc-600"></i>
-                  <span>${d.label}</span>
-                </div>
-                <span class="text-[10px] px-1.5 py-0.2 rounded-full border ${badgeClass} font-mono">${badgeText}</span>
-              </div>
-              <p class="text-[11.5px] text-zinc-600 leading-relaxed font-sans">
-                ${escapeHtml(content)}
-              </p>
-            </div>
-          `;
-        }).join('');
-
-        html += `
-          <div class="border border-zinc-200/90 rounded-2xl bg-[#fafafa] shadow-2xs overflow-hidden">
-            <div class="px-4 py-3 bg-white border-b border-zinc-200/80 flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i data-lucide="shield-alert" class="w-4 h-4 text-emerald-600"></i>
-                <span class="font-semibold text-xs text-zinc-900">多维度领域深度核验矩阵 (Domain Assessments)</span>
-              </div>
-              <span class="text-[11px] text-zinc-500 font-mono">6 Agents Verified</span>
-            </div>
-            <div class="p-3.5 grid grid-cols-1 md:grid-cols-2 gap-3">
-              ${cardsHtml}
-            </div>
-          </div>
-        `;
-      }
-
-      // 3. 逐文件改动走查清单 (File-by-File Walkthrough)
+      // 不再强制塞入死板的固定大卡片（领域矩阵、流程图等），保持主视图轻盈纯粹
+      // 仅在存在文件走查清单时，提供一个轻量、默认折叠的抽屉供有需要的开发者按需展开
       if (hasWalkthrough) {
         const rowsHtml = summary.walkthrough.map(item => `
-          <div class="px-4 py-3 hover:bg-zinc-50/80 transition-colors flex flex-col gap-1">
+          <div class="px-4 py-2.5 hover:bg-zinc-50/80 transition-colors flex flex-col gap-1">
             <div class="flex items-center justify-between">
               <div onclick="previewRawDiffModal('${escapeHtml(item.file)}')" class="font-mono text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer flex items-center gap-1.5 hover:underline">
                 <i data-lucide="file-code" class="w-3.5 h-3.5 text-zinc-400"></i>
@@ -2645,64 +2559,31 @@
           </div>
         `).join('');
 
-        html += `
-          <div class="border border-zinc-200 rounded-2xl bg-white shadow-2xs overflow-hidden">
-            <div class="px-4 py-3 bg-[#fafafa] border-b border-zinc-200 flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i data-lucide="list-checks" class="w-4 h-4 text-blue-600"></i>
-                <span class="font-semibold text-xs text-zinc-900">逐文件改动走查清单 (File Walkthrough)</span>
+        container.innerHTML = `
+          <div class="border border-zinc-200/90 rounded-xl bg-zinc-50/60 overflow-hidden text-xs my-2">
+            <div class="px-3.5 py-2 flex items-center justify-between cursor-pointer select-none hover:bg-zinc-100/70 transition-colors" onclick="toggleWalkthroughDrawer()">
+              <div class="flex items-center gap-2 text-zinc-700 font-medium">
+                <i data-lucide="list-checks" class="w-3.5 h-3.5 text-zinc-500"></i>
+                <span>逐文件改动走查说明 (${summary.walkthrough.length} 个文件)</span>
               </div>
-              <span class="text-[11px] text-zinc-500 font-mono">${summary.walkthrough.length} files</span>
+              <i data-lucide="chevron-down" id="walkthroughChev" class="w-3.5 h-3.5 text-zinc-400 transition-transform"></i>
             </div>
-            <div class="divide-y divide-zinc-100">
+            <div id="walkthroughDrawerContent" class="hidden divide-y divide-zinc-100 border-t border-zinc-200/80 bg-white">
               ${rowsHtml}
             </div>
           </div>
         `;
+        lucide.createIcons();
       }
+    }
 
-      // 4. 调用关系与状态流转图 (Mermaid Diagram)
-      const rawDiagram = (summary.mermaidDiagram || '').replace(/^```(?:mermaid)?/i, '').replace(/```$/, '').trim();
-      const validPrefixes = ['graph', 'flowchart', 'sequencediagram', 'classdiagram', 'statediagram', 'erdiagram'];
-      const firstWord = rawDiagram.split(/[\s\n]+/)[0]?.toLowerCase();
-      const hasDiagram = validPrefixes.includes(firstWord) && rawDiagram.length > 15;
-
-      if (hasDiagram) {
-        html += `
-          <div id="detailMermaidCard" class="border border-zinc-200 rounded-2xl bg-white shadow-2xs overflow-hidden">
-            <div class="px-4 py-3 bg-[#fafafa] border-b border-zinc-200 flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <i data-lucide="git-branch" class="w-4 h-4 text-zinc-600"></i>
-                <span class="font-semibold text-xs text-zinc-900">架构调用与状态流转图 (Sequence & Flow)</span>
-              </div>
-            </div>
-            <div id="detailMermaidContent" class="p-4 bg-zinc-50/50 overflow-x-auto flex justify-center">
-              <pre class="mermaid text-xs">${escapeHtml(rawDiagram)}</pre>
-            </div>
-          </div>
-        `;
-      }
-
-      container.innerHTML = html;
-      lucide.createIcons();
-      if (hasDiagram && window.mermaid) {
-        try {
-          mermaid.initialize({
-            startOnLoad: false,
-            theme: 'neutral',
-            securityLevel: 'loose',
-            suppressErrorRendering: true
-          });
-          mermaid.run({
-            nodes: [document.querySelector('#detailMermaidCard .mermaid')]
-          }).catch(e => {
-            console.warn('[mermaid] render failed, hiding card:', e);
-            document.getElementById('detailMermaidCard')?.remove();
-          });
-        } catch (e) {
-          console.warn('[mermaid] run exception, hiding card:', e);
-          document.getElementById('detailMermaidCard')?.remove();
-        }
+    function toggleWalkthroughDrawer() {
+      const content = document.getElementById('walkthroughDrawerContent');
+      const chev = document.getElementById('walkthroughChev');
+      if (!content) return;
+      content.classList.toggle('hidden');
+      if (chev) {
+        chev.classList.toggle('rotate-180');
       }
     }
 
