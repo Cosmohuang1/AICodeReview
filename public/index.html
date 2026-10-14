@@ -488,18 +488,20 @@
         <div id="detailChatStream" class="space-y-4 pt-2"></div>
       </div>
 
-      <!-- 底部输入框 (Benchmark 风格) -->
+      <!-- 底部输入框 -->
       <div class="p-4 border-t border-[#eaecf0] bg-white sticky bottom-0 z-20">
         <div class="max-w-3xl mx-auto w-full bg-[#f8f9fa] border border-zinc-300/80 rounded-2xl p-3 shadow-2xs flex flex-col gap-2">
-          <input type="text" id="followUpChatInput" placeholder="Tell the agent what to change (Ctrl+/)..." class="w-full bg-transparent text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none">
+          <input type="text" id="followUpChatInput" placeholder="向智能体输入修改指令或追问代码细节 (Enter 发送)..." class="w-full bg-transparent text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none">
           <div class="flex items-center justify-between pt-1 text-[11px] text-zinc-400">
             <div class="flex items-center gap-2">
-              <button class="p-1 rounded hover:bg-zinc-200 text-zinc-500" title="添加附件或上下文"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
-              <span class="px-2 py-0.5 rounded-full bg-zinc-200/70 text-zinc-600 font-mono text-[10px]">Trial · 65/100 min left</span>
+              <button class="p-1 rounded hover:bg-zinc-200 text-zinc-500" title="添加上下文"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 font-mono text-[10px] flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>DeepSeek 运行中</span>
+              </span>
             </div>
             <div class="flex items-center gap-2">
-              <span class="text-zinc-500 font-mono text-[11px]">⏱ 实时</span>
-              <button class="p-1 rounded hover:bg-zinc-200 text-zinc-400" title="语音输入"><i data-lucide="mic" class="w-3.5 h-3.5"></i></button>
+              <span class="text-zinc-400 font-sans text-[11px]">按 Enter 发送</span>
               <button id="btnSendFollowUp" class="w-7 h-7 rounded-full bg-zinc-900 text-white flex items-center justify-center hover:bg-zinc-800 transition-transform hover:scale-105 cursor-pointer" title="发送指令">
                 <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i>
               </button>

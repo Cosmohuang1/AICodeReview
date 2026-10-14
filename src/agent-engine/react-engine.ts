@@ -104,7 +104,8 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
 2. 如需修改代码，必须调用 edit_file 进行精准局部替换（严谨核对原始代码块）；
 3. 修改后若有测试或校验命令（例如 ${params.testCmd || 'npm test'}），调用 run_command 真实执行验证；
 4. 若命令报错或测试未通过（退出码非 0），不要恐慌，仔细分析报错堆栈与失败原因，再次调用 edit_file 针对性修复，直到全部通过；
-5. 当你确认任务已彻底完成、或无需修改代码即可向用户解答时，直接给出最终详细回应，不要附带任何 tool_calls。`;
+5. 当你确认任务已彻底完成、或无需修改代码即可向用户解答时，直接给出最终详细回应，不要附带任何 tool_calls；
+6. 所有的思考分析过程（Thought）与回应内容必须全程使用中文。`;
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt },
