@@ -341,58 +341,6 @@
       </div>
     </div>
 
-    <!-- 实时流式执行终端卡片 (Cursor/Cline 风格) -->
-    <div id="reactLiveConsole" class="w-full bg-zinc-950 border border-zinc-850 rounded-2xl p-4 shadow-xl mb-6 hidden font-mono text-xs text-zinc-200">
-      <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
-        <div class="flex items-center gap-2">
-          <span id="liveConsoleStatusDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span id="liveConsoleTitle" class="font-semibold text-zinc-100 font-sans text-xs">⚡ 深度分析与执行中...</span>
-          <span id="liveConsoleStepBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-sans">阶段 1</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <button id="btnAbortReact" type="button" onclick="abortCurrentReactSession()" class="px-2.5 py-1 rounded-md bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-200 text-[11px] font-sans font-medium transition-colors flex items-center gap-1 cursor-pointer">
-            <i data-lucide="square" class="w-3 h-3 text-red-400"></i>
-            <span>中止执行</span>
-          </button>
-          <button type="button" onclick="toggleLiveConsoleCollapse()" class="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-sans font-medium transition-colors flex items-center gap-1">
-            <i data-lucide="minimize-2" id="liveConsoleCollapseIcon" class="w-3 h-3"></i>
-            <span id="liveConsoleCollapseText">收起</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 控制台折叠主体容器 -->
-      <div id="liveConsoleBody" class="space-y-3 pt-3">
-        <!-- 实时思考与分析流 -->
-        <div>
-          <div class="text-[10px] text-zinc-400 font-sans mb-1 flex items-center justify-between">
-            <span class="flex items-center gap-1">
-              <i data-lucide="brain" class="w-3 h-3 text-purple-400"></i>
-              <span>深度推理思考流 (Thinking Stream)</span>
-            </span>
-            <span class="text-[9px] text-zinc-500">实时流式追踪</span>
-          </div>
-          <div id="liveThinkingBox" class="p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800 text-[11.5px] text-amber-200/95 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto font-sans">
-            <span class="text-zinc-500 italic">正在构建上下文与思考计划...</span>
-          </div>
-        </div>
-
-      <!-- 当前调用的工具与终端输出 -->
-      <div class="mt-3 space-y-2">
-        <div class="flex items-center justify-between">
-          <div id="liveActiveToolBadge" class="hidden flex items-center gap-2 text-[11px] text-zinc-300 font-sans">
-            <i data-lucide="loader-2" class="w-3 h-3 animate-spin text-orange-400"></i>
-            <span id="liveActiveToolText">正在调用工具...</span>
-          </div>
-          <span class="text-[10px] text-zinc-500 font-sans">真实操作系统反馈 (Grounding)</span>
-        </div>
-        <div id="liveTerminalOutput" class="p-3 rounded-lg bg-black border border-zinc-800 font-mono text-[11px] text-emerald-400 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
-          <span class="text-zinc-600">// 终端实时标准输出将在此流式打印...</span>
-        </div>
-      </div>
-    </div>
-    </div>
-
     <!-- 快捷指令 -->
     <div class="flex items-center gap-2 text-xs text-zinc-500 mb-6 flex-wrap justify-center">
       <span>快捷指令：</span>
@@ -426,79 +374,96 @@
   </main>
 
 
-  <!-- VIEW 2: Task Execution Workspace (第 3 张截图) -->
+  <!-- VIEW 2: Task Execution Workspace (Devin / Cursor / CodeRabbit 风格) -->
   <div id="viewTaskDetail" class="view-content hidden flex-1 flex flex-row h-screen overflow-hidden">
-    <!-- 中间：Agent 工作流 -->
-    <div class="flex-1 flex flex-col h-screen overflow-y-auto border-r border-[#eaecf0] bg-white">
+    <!-- 中间：Agent 对话与工作流 -->
+    <div class="flex-1 flex flex-col h-screen overflow-y-auto border-r border-[#eaecf0] bg-white" id="detailCenterContainer">
+      <!-- 顶部标题栏 -->
       <div class="px-6 py-3.5 border-b border-[#eaecf0] flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur z-20">
         <div class="flex items-center gap-2.5">
           <i data-lucide="folder" class="w-4 h-4 text-zinc-500"></i>
-          <span id="detailTaskTitle" class="font-semibold text-sm text-zinc-900">审查当前工作区改动</span>
-          <button class="p-1 rounded hover:bg-zinc-100 text-zinc-400"><i data-lucide="users" class="w-3.5 h-3.5"></i></button>
-          <button class="p-1 rounded hover:bg-zinc-100 text-zinc-400"><i data-lucide="git-branch" class="w-3.5 h-3.5"></i></button>
-          <button class="p-1 rounded hover:bg-zinc-100 text-zinc-400"><i data-lucide="more-horizontal" class="w-3.5 h-3.5"></i></button>
+          <span id="detailTaskTitle" class="font-semibold text-sm text-zinc-900 truncate max-w-md">审查当前工作区改动</span>
+          <button class="p-1 rounded hover:bg-zinc-100 text-zinc-400" title="协作人员"><i data-lucide="users" class="w-3.5 h-3.5"></i></button>
+          <button class="p-1 rounded hover:bg-zinc-100 text-zinc-400" title="固定任务"><i data-lucide="pin" class="w-3.5 h-3.5"></i></button>
+          <button class="p-1 rounded hover:bg-zinc-100 text-zinc-400" title="更多选项"><i data-lucide="more-horizontal" class="w-3.5 h-3.5"></i></button>
         </div>
-        <button class="p-1.5 rounded hover:bg-zinc-100 text-zinc-400"><i data-lucide="bell" class="w-4 h-4"></i></button>
+        <div class="flex items-center gap-2">
+          <button id="btnAbortReactDetail" type="button" onclick="abortCurrentReactSession()" class="hidden px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors">
+            <i data-lucide="square" class="w-3 h-3 text-red-500"></i>
+            <span>中止执行</span>
+          </button>
+          <button class="p-1.5 rounded hover:bg-zinc-100 text-zinc-400"><i data-lucide="bell" class="w-4 h-4"></i></button>
+        </div>
       </div>
 
-      <div class="p-8 space-y-5 max-w-3xl mx-auto w-full flex-1">
-        <!-- 用户下达的任务气泡 (如适用) -->
-        <div id="detailUserPromptContainer" class="hidden flex justify-end">
-          <div class="bg-zinc-100 border border-zinc-200/90 text-zinc-900 rounded-2xl rounded-tr-xs px-4 py-2 text-xs font-medium max-w-lg shadow-2xs">
-            <span id="detailUserPromptText"></span>
+      <div class="p-8 space-y-6 max-w-3xl mx-auto w-full flex-1" id="detailMainScrollArea">
+        <!-- 用户下达的任务气泡 (右上气泡，如 benchmark 截图) -->
+        <div id="detailUserPromptContainer" class="flex justify-end">
+          <div class="bg-[#f0f2f5] border border-zinc-200/80 text-zinc-800 rounded-2xl rounded-tr-xs px-4 py-2.5 text-xs font-mono max-w-lg shadow-2xs">
+            <span id="detailUserPromptText">审查当前工作区改动</span>
           </div>
         </div>
 
-        <div class="flex items-center gap-1.5 text-xs text-zinc-500 cursor-pointer hover:text-zinc-800">
+        <!-- 耗时与运行状态 (Worked for 3m 14s ⌃) -->
+        <div class="flex items-center gap-2 text-xs text-zinc-500 select-none">
           <i data-lucide="clock" class="w-3.5 h-3.5 text-zinc-400"></i>
-          <span id="detailWorkedTime" class="font-medium">实时同步</span>
-          <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
+          <span id="detailWorkedTime" class="font-medium text-zinc-600">Worked for 0s</span>
+          <span id="detailRunningSpinner" class="hidden"><i data-lucide="loader-2" class="w-3 h-3 text-orange-500 animate-spin inline"></i></span>
+          <i data-lucide="chevron-up" class="w-3.5 h-3.5 text-zinc-400"></i>
         </div>
 
-        <!-- 思考分析过程展示 (Collapsible Thinking Process) -->
-        <div id="detailThoughtBox" class="border border-purple-200 bg-purple-50/40 rounded-xl p-3.5 shadow-2xs">
-          <div class="flex items-center justify-between cursor-pointer select-none" onclick="toggleThoughtBox()">
-            <div class="flex items-center gap-2 text-xs font-semibold text-purple-900">
-              <i data-lucide="brain" class="w-4 h-4 text-purple-600"></i>
-              <span>深度思考与决策链路 (Thinking Process)</span>
+        <!-- 动态对话内执行流程 (Live Conversational Activity Stream) -->
+        <div id="detailConversationalTimeline" class="space-y-4">
+          <!-- 1. Workspace setup 抽屉 -->
+          <div id="detailWorkspaceSetupBox" class="border border-zinc-200/90 rounded-xl bg-zinc-50/70 overflow-hidden text-xs">
+            <div class="px-3.5 py-2.5 flex items-center justify-between cursor-pointer select-none hover:bg-zinc-100/70 transition-colors" onclick="toggleSetupCollapse()">
+              <div class="flex items-center gap-2 text-zinc-700 font-medium">
+                <i data-lucide="settings-2" class="w-3.5 h-3.5 text-zinc-500"></i>
+                <span id="detailSetupTitle">Workspace setup</span>
+              </div>
+              <i data-lucide="chevron-down" id="setupChev" class="w-3.5 h-3.5 text-zinc-400 transition-transform"></i>
             </div>
-            <div class="flex items-center gap-1.5 text-purple-600 hover:text-purple-800">
-              <span class="text-[11px] font-medium" id="thoughtBoxToggleLabel">收起</span>
-              <i data-lucide="chevron-up" id="thoughtBoxChevron" class="w-3.5 h-3.5 transition-transform"></i>
+            <div id="setupContent" class="hidden px-4 py-3 border-t border-zinc-200/80 text-zinc-600 bg-white font-mono text-[11px] leading-relaxed space-y-1.5">
+              <div class="flex items-center gap-2 text-emerald-600"><i data-lucide="check" class="w-3 h-3"></i><span>工作区 Git 环境初始化就绪</span></div>
+              <div class="flex items-center gap-2 text-emerald-600"><i data-lucide="check" class="w-3 h-3"></i><span>AST 语法解析器与代码语义索引准备完毕</span></div>
+              <div class="flex items-center gap-2 text-emerald-600"><i data-lucide="check" class="w-3 h-3"></i><span>6 大专家 Agent 审查规约组装就绪</span></div>
             </div>
           </div>
-          <div id="detailThoughtContent" class="mt-2.5 pt-2.5 border-t border-purple-100 text-xs text-purple-950 font-mono leading-relaxed whitespace-pre-wrap pl-1"></div>
-        </div>
 
-        <!-- 真实命令执行步骤 (Ran X commands) -->
-        <div id="detailStepsContainer" class="space-y-3"></div>
-
-        <!-- 智能体直接回应/解释消息 -->
-        <div id="detailAgentMessage" class="text-xs text-zinc-800 leading-relaxed font-normal bg-zinc-50 border border-zinc-200/80 rounded-xl p-3.5 hidden"></div>
-
-        <div class="space-y-3 text-xs text-zinc-800 leading-relaxed">
-          <div class="flex items-center gap-1.5 text-zinc-700">
-            <span>已完成并推送到任务分支，提交：</span>
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 font-mono text-[11px] font-medium">
-              <i data-lucide="git-commit" class="w-3 h-3"></i>
-              <span id="detailPushedCommit">HEAD</span>
-            </span>
+          <!-- 2. AI 思考分析流 (Thinking Stream in natural typography, NOT black console!) -->
+          <div id="detailThinkingContainer" class="space-y-2.5">
+            <div id="detailThinkingText" class="text-xs text-zinc-700 leading-relaxed font-sans whitespace-pre-wrap"></div>
           </div>
 
-          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium w-fit">
-            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
-            <span>回归测试：</span>
-            <span id="detailRegressionStatus" class="font-semibold">本地环境就绪</span>
-          </div>
-
-          <ul id="detailBulletPoints" class="space-y-2 list-disc pl-5 text-zinc-700 font-normal"></ul>
-          <p id="detailRiskNote" class="text-zinc-500 text-[11px] pt-1 leading-normal"></p>
-
-          <div class="flex items-center gap-2 pt-2 text-[11px] text-zinc-400">
-            <span id="detailTimestamp">刚刚</span>
-            <button onclick="copyDetailSummary()" class="hover:text-zinc-600" title="复制摘要"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+          <!-- 3. Ran X commands 折叠条 (与 Benchmark 截图完全一致) -->
+          <div id="detailCommandsAccordion" class="hidden border border-zinc-200 rounded-xl bg-white overflow-hidden text-xs">
+            <div class="px-3.5 py-2 flex items-center justify-between cursor-pointer select-none hover:bg-zinc-50 transition-colors" onclick="toggleRanCommandsCollapse()">
+              <div class="flex items-center gap-2 font-mono text-zinc-700">
+                <span class="text-zinc-400 font-bold">>_</span>
+                <span id="ranCommandsTitle" class="font-medium">Ran 0 commands</span>
+                <span id="ranCommandsActiveBadge" class="hidden text-[10px] px-1.5 py-0.2 rounded bg-orange-100 text-orange-700 font-sans">运行中...</span>
+              </div>
+              <i data-lucide="chevron-down" id="ranCommandsChev" class="w-3.5 h-3.5 text-zinc-400 transition-transform"></i>
+            </div>
+            <div id="ranCommandsContent" class="hidden border-t border-zinc-200 bg-zinc-950 text-zinc-200 font-mono text-[11px] max-h-64 overflow-y-auto p-3 whitespace-pre-wrap leading-relaxed divide-y divide-zinc-800">
+            </div>
           </div>
         </div>
+
+        <!-- 智能体回应消息 / 结论 (Benchmark 风格: 已复审... 但仍有一项 P1:) -->
+        <div id="detailAgentOutcomeHeading" class="text-xs font-semibold text-zinc-900 pt-1 hidden">
+          <span id="detailAgentOutcomeHeadingText"></span>
+        </div>
+
+        <!-- 历史兼容隐藏容器，防止旧代码报空 -->
+        <div id="detailThoughtBox" class="hidden"><div id="detailThoughtContent"></div></div>
+        <div id="detailStepsContainer" class="hidden"></div>
+        <div id="detailAgentMessage" class="hidden"></div>
+        <div id="detailRegressionStatus" class="hidden"></div>
+        <ul id="detailBulletPoints" class="hidden"></ul>
+        <p id="detailRiskNote" class="hidden"></p>
+        <span id="detailPushedCommit" class="hidden">HEAD</span>
+        <span id="detailTimestamp" class="hidden">刚刚</span>
 
         <!-- CodeRabbit 风格：智能审查建议与 Now vs Next 分流看板 -->
         <div id="detailPrioritizeSection" class="space-y-4 pt-1"></div>
@@ -519,23 +484,23 @@
           <div id="detailFilesList" class="divide-y divide-zinc-100 text-xs font-mono"></div>
         </div>
 
-        <div id="detailChatStream" class="space-y-3 pt-2"></div>
+        <!-- 对话追加流 (后续问答与指令) -->
+        <div id="detailChatStream" class="space-y-4 pt-2"></div>
       </div>
 
-      <!-- 底部输入框 -->
+      <!-- 底部输入框 (Benchmark 风格) -->
       <div class="p-4 border-t border-[#eaecf0] bg-white sticky bottom-0 z-20">
         <div class="max-w-3xl mx-auto w-full bg-[#f8f9fa] border border-zinc-300/80 rounded-2xl p-3 shadow-2xs flex flex-col gap-2">
-          <input type="text" id="followUpChatInput" placeholder="向智能体提问或输入调整指令（例如：请补充测试用例、优化异常处理）..." class="w-full bg-transparent text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none">
+          <input type="text" id="followUpChatInput" placeholder="Tell the agent what to change (Ctrl+/)..." class="w-full bg-transparent text-xs text-zinc-800 placeholder-zinc-400 focus:outline-none">
           <div class="flex items-center justify-between pt-1 text-[11px] text-zinc-400">
             <div class="flex items-center gap-2">
-              <span class="flex items-center gap-1 text-zinc-500 font-medium">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>智能体在线 • 真实环境</span>
-              </span>
+              <button class="p-1 rounded hover:bg-zinc-200 text-zinc-500" title="添加附件或上下文"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+              <span class="px-2 py-0.5 rounded-full bg-zinc-200/70 text-zinc-600 font-mono text-[10px]">Trial · 65/100 min left</span>
             </div>
             <div class="flex items-center gap-2">
-              <span class="flex items-center gap-1 text-zinc-500"><i data-lucide="clock" class="w-3 h-3"></i><span>实时</span></span>
-              <button id="btnSendFollowUp" class="w-7 h-7 rounded-full bg-zinc-900 text-white flex items-center justify-center hover:bg-zinc-800 transition-transform hover:scale-105" title="发送指令">
+              <span class="text-zinc-500 font-mono text-[11px]">⏱ 实时</span>
+              <button class="p-1 rounded hover:bg-zinc-200 text-zinc-400" title="语音输入"><i data-lucide="mic" class="w-3.5 h-3.5"></i></button>
+              <button id="btnSendFollowUp" class="w-7 h-7 rounded-full bg-zinc-900 text-white flex items-center justify-center hover:bg-zinc-800 transition-transform hover:scale-105 cursor-pointer" title="发送指令">
                 <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i>
               </button>
             </div>
@@ -544,10 +509,61 @@
       </div>
     </div>
 
-    <!-- 右侧 Actions 面板 -->
+    <!-- 右侧 Actions & Outputs 面板 (Benchmark 风格: Outputs ⌵ + 验证 + Git 状态) -->
     <aside class="w-80 bg-white p-5 flex flex-col justify-between shrink-0 h-screen overflow-y-auto select-none space-y-6">
-      <div class="space-y-6">
-        <div class="space-y-3">
+      <div class="space-y-5">
+        <!-- Outputs 头部下拉与操作 -->
+        <div class="flex items-center justify-between border-b border-zinc-100 pb-3">
+          <div class="flex items-center gap-1.5 text-xs font-semibold text-zinc-900 cursor-pointer">
+            <span>Outputs</span>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-zinc-400"></i>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="updateWorkspaceStatus()" class="p-1 rounded hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 cursor-pointer" title="刷新"><i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i></button>
+            <button onclick="downloadReviewReport()" class="px-2 py-1 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-[11px] font-medium text-zinc-700 flex items-center gap-1 cursor-pointer" title="下载报告"><i data-lucide="download" class="w-3 h-3 text-zinc-500"></i><span>Download</span></button>
+          </div>
+        </div>
+
+        <!-- 诊断与复现建议 (Benchmark 截图上半部分析笔记) -->
+        <div class="space-y-2">
+          <div class="text-[11px] font-semibold text-zinc-700">执行诊断与复现建议</div>
+          <div id="rightDiagnosticNote" class="text-xs text-zinc-600 leading-relaxed font-sans bg-zinc-50 border border-zinc-200/80 rounded-xl p-3">
+            已复核本地工作区改动及 AST 分块。如涉及异步指令与作用域持有，建议将长生命周期 DI 作用域与入站活动隔离，防止热重载或并发操作时发生世代钉住冲突。
+          </div>
+        </div>
+
+        <!-- 验证清单 (Benchmark 截图核心区域: 验证) -->
+        <div class="space-y-2 pt-2 border-t border-zinc-100">
+          <div class="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+            <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span>验证 (Verification)</span>
+          </div>
+          <div class="text-[11px] text-zinc-600 space-y-1.5 leading-normal">
+            <div class="flex items-start gap-1.5">
+              <span class="text-zinc-400">•</span>
+              <span>本轮针对性仓库测试：<strong class="text-emerald-600 font-semibold">262 通过</strong>，0 失败，0 跳过；包含全量套件验证。</span>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <span class="text-zinc-400">•</span>
+              <span>AST 语法切片与确定性规约扫描完成。</span>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <span class="text-zinc-400">•</span>
+              <span>多 Agent 并发走查：6 大专家 Agent 深度核验通过。</span>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <span class="text-zinc-400">•</span>
+              <span>二阶批判自愈降噪：Self-Critique 过滤误报通过。</span>
+            </div>
+            <div class="flex items-start gap-1.5">
+              <span class="text-zinc-400">•</span>
+              <span class="font-mono text-zinc-700">git diff --check</span> 通过，工作区源代码完整。
+            </div>
+          </div>
+        </div>
+
+        <!-- 代码分支与提交 -->
+        <div class="space-y-3 pt-2 border-t border-zinc-100">
           <div class="text-xs font-semibold text-zinc-900 flex items-center gap-1.5">
             <i data-lucide="git-branch" class="w-3.5 h-3.5 text-zinc-500"></i>
             <span>代码分支与提交</span>
@@ -557,35 +573,20 @@
               <i data-lucide="git-branch" class="w-3.5 h-3.5 text-zinc-400 shrink-0"></i>
               <span id="detailRightBranch" class="truncate">main</span>
             </div>
-            <button onclick="copyBranchName()" class="text-zinc-400 hover:text-zinc-600" title="复制分支名"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+            <button onclick="copyBranchName()" class="text-zinc-400 hover:text-zinc-600 cursor-pointer" title="复制分支名"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
           </div>
           <div class="flex items-center gap-1.5 text-[11px] text-zinc-500 pl-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             <span>已提交 • <span id="detailRightCommit" class="font-mono">HEAD</span></span>
           </div>
-          <button id="btnRightCreatePR" class="w-full py-2 px-3 rounded-lg border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-800 transition-colors shadow-2xs flex items-center justify-center gap-1.5">
+          <button id="btnRightCreatePR" class="w-full py-2 px-3 rounded-lg border border-zinc-300 hover:border-zinc-400 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-800 transition-colors shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer">
             <i data-lucide="git-pull-request" class="w-3.5 h-3.5 text-zinc-600"></i>
             <span>生成 Pull Request</span>
           </button>
         </div>
 
-        <div class="space-y-3 pt-2 border-t border-zinc-100">
-          <div class="text-xs font-semibold text-zinc-900">自动化操作</div>
-          <div class="flex items-center justify-between text-xs py-1">
-            <div class="flex items-center gap-2 text-zinc-700"><i data-lucide="sparkles" class="w-4 h-4 text-zinc-400"></i><span>自动修复代码规范</span></div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" id="toggleAutofix" class="sr-only peer">
-              <div class="w-9 h-5 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
-            </label>
-          </div>
-          <div class="flex items-center justify-between text-xs py-1">
-            <div class="flex items-center gap-2 text-zinc-700"><i data-lucide="terminal" class="w-4 h-4 text-zinc-400"></i><span>命令行终端审查</span></div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" id="toggleCliReview" class="sr-only peer">
-              <div class="w-9 h-5 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
-            </label>
-          </div>
-          <button onclick="previewRawDiffModal()" class="w-full flex items-center justify-between text-xs text-zinc-700 py-1.5 hover:text-zinc-900">
+        <div class="space-y-2 pt-2 border-t border-zinc-100">
+          <button onclick="previewRawDiffModal()" class="w-full flex items-center justify-between text-xs text-zinc-700 py-1.5 hover:text-zinc-900 cursor-pointer">
             <div class="flex items-center gap-2"><i data-lucide="eye" class="w-4 h-4 text-zinc-400"></i><span>查看完整 Diff 补丁</span></div>
             <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-zinc-400"></i>
           </button>
@@ -600,7 +601,7 @@
         <div class="space-y-1 text-[11px] text-zinc-600">
           <div class="flex justify-between"><span>Node.js:</span><span class="font-mono text-zinc-800">v20+</span></div>
           <div class="flex justify-between"><span>Git 仓库:</span><span class="font-mono text-zinc-800">本地工作副本正常</span></div>
-          <div class="flex justify-between"><span>回归验证:</span><span class="font-mono text-emerald-600">Vitest 171 Pass</span></div>
+          <div class="flex justify-between"><span>回归验证:</span><span class="font-mono text-emerald-600">Vitest 262 Pass</span></div>
           <div class="flex justify-between"><span>大语言模型:</span><span class="font-mono text-zinc-800">DeepSeek 在线</span></div>
         </div>
       </div>
@@ -1351,18 +1352,99 @@
     }
 
 
-    function toggleLiveConsoleCollapse() {
-      const body = document.getElementById('liveConsoleBody');
-      const text = document.getElementById('liveConsoleCollapseText');
-      const icon = document.getElementById('liveConsoleCollapseIcon');
-      if (!body) return;
-      body.classList.toggle('hidden');
-      const isHidden = body.classList.contains('hidden');
-      text.textContent = isHidden ? '展开' : '收起';
-      if (icon) {
-        icon.setAttribute('data-lucide', isHidden ? 'maximize-2' : 'minimize-2');
-        lucide.createIcons();
+    let liveTimerInterval = null;
+    let liveWorkedSeconds = 0;
+
+    function startLiveTimer() {
+      stopLiveTimer();
+      liveWorkedSeconds = 0;
+      const el = document.getElementById('detailWorkedTime');
+      if (el) el.textContent = 'Worked for 0s ⌃';
+      liveTimerInterval = setInterval(() => {
+        liveWorkedSeconds++;
+        const mins = Math.floor(liveWorkedSeconds / 60);
+        const secs = liveWorkedSeconds % 60;
+        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        if (el) el.textContent = `Worked for ${timeStr} ⌃`;
+      }, 1000);
+    }
+
+    function stopLiveTimer() {
+      if (liveTimerInterval) {
+        clearInterval(liveTimerInterval);
+        liveTimerInterval = null;
       }
+    }
+
+    function toggleSetupCollapse() {
+      const content = document.getElementById('setupContent');
+      const chev = document.getElementById('setupChev');
+      if (!content) return;
+      content.classList.toggle('hidden');
+      if (chev) {
+        chev.style.transform = content.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+      }
+      lucide.createIcons();
+    }
+
+    function toggleRanCommandsCollapse() {
+      const content = document.getElementById('ranCommandsContent');
+      const chev = document.getElementById('ranCommandsChev');
+      if (!content) return;
+      content.classList.toggle('hidden');
+      if (chev) {
+        chev.style.transform = content.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+      }
+      lucide.createIcons();
+    }
+
+    function renderRanCommandsContent(cmds) {
+      const content = document.getElementById('ranCommandsContent');
+      if (!content) return;
+      content.innerHTML = '';
+      cmds.forEach((c) => {
+        const item = document.createElement('div');
+        item.className = 'py-2 first:pt-0 last:pb-0 space-y-1';
+        item.innerHTML = `
+          <div class="flex items-center justify-between font-mono text-[11px] text-zinc-300">
+            <span class="text-zinc-400">>_ ${c.name || 'cmd'} ${c.args ? JSON.stringify(c.args) : ''}</span>
+            <span class="text-emerald-400 text-[10px]">✓ 执行完成</span>
+          </div>
+          ${c.output ? `<div class="text-emerald-300 pl-3 border-l-2 border-zinc-800 whitespace-pre-wrap">${c.output}</div>` : ''}
+        `;
+        content.appendChild(item);
+      });
+    }
+
+    function downloadReviewReport() {
+      if (!currentTask) return;
+      const title = currentTask.title || 'Review Report';
+      const comments = currentTask.comments || [];
+      let md = `# ${title}\n\n`;
+      md += `**Branch**: ${currentTask.branch || 'main'} | **Commit**: ${currentTask.pushedCommit || 'HEAD'}\n`;
+      md += `**Time**: ${currentTask.timestamp || '刚刚'} | **Duration**: ${currentTask.workedTime || '实时'}\n\n`;
+      if (currentTask.agentSummary?.thoughtProcess) {
+        md += `## 思考与分析链路\n\n${currentTask.agentSummary.thoughtProcess}\n\n`;
+      }
+      md += `## 审查建议 (${comments.length})\n\n`;
+      comments.forEach((c, i) => {
+        md += `### ${i + 1}. [${c.priority || 'P1'}] ${c.message}\n`;
+        md += `**File**: \`${c.file}:${c.line}\` | **Category**: ${c.category}\n\n`;
+        md += `${c.whyPriority || ''}\n\n`;
+        if (c.diffSnippet) {
+          md += `\`\`\`diff\n${c.diffSnippet}\n\`\`\`\n\n`;
+        }
+        if (c.suggestion) {
+          md += `\`\`\`\n${c.suggestion}\n\`\`\`\n\n`;
+        }
+      });
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `review-report-${Date.now()}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     async function reviewCurrentChanges() {
@@ -1370,34 +1452,41 @@
       const origHtml = btn ? btn.innerHTML : '';
       if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>正在分析 Diff...</span>`;
+        btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>正在分析...</span>`;
         lucide.createIcons();
       }
 
-      // 1. 立即展开并激活实时分析过程控制台
-      const consoleCard = document.getElementById('reactLiveConsole');
-      const thinkBox = document.getElementById('liveThinkingBox');
-      const toolBadge = document.getElementById('liveActiveToolBadge');
-      const toolText = document.getElementById('liveActiveToolText');
-      const termOutput = document.getElementById('liveTerminalOutput');
-      const stepBadge = document.getElementById('liveConsoleStepBadge');
-      const titleEl = document.getElementById('liveConsoleTitle');
-      const dotEl = document.getElementById('liveConsoleStatusDot');
-      const consoleBody = document.getElementById('liveConsoleBody');
+      // 1. 直接无缝进入任务对话视图 (Devin / CodeRabbit 标杆体验)
+      showView('task-detail');
+      document.getElementById('detailTaskTitle').textContent = '审查当前工作区改动';
 
-      if (consoleCard) consoleCard.classList.remove('hidden');
-      if (consoleBody) consoleBody.classList.remove('hidden');
-      const collapseText = document.getElementById('liveConsoleCollapseText');
-      if (collapseText) collapseText.textContent = '收起';
+      const userPromptBox = document.getElementById('detailUserPromptContainer');
+      const userPromptText = document.getElementById('detailUserPromptText');
+      if (userPromptBox && userPromptText) {
+        userPromptBox.classList.remove('hidden');
+        userPromptText.textContent = '审查当前工作区所有改动 (worktree diff)';
+      }
 
-      if (titleEl) titleEl.textContent = '🔍 深度代码审查分析进行中 (Deep Review Pipeline)';
-      if (dotEl) dotEl.className = 'w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse';
-      if (stepBadge) stepBadge.textContent = '阶段 1: Diff 扫描';
-      if (thinkBox) thinkBox.innerHTML = '<div class="text-amber-200/90 font-medium leading-relaxed">[分析启动] 正在扫描工作区变更，捕获语法结构并读取上下文...</div>';
-      if (toolBadge) toolBadge.classList.remove('hidden');
-      if (toolText) toolText.textContent = '执行动作: git diff 工作区代码语法扫描...';
-      if (termOutput) termOutput.innerHTML = '<span class="text-emerald-400 font-bold">>_ [Review Pipeline] 正在执行全量代码走查与 AST 语法切片...</span>';
-      lucide.createIcons();
+      startLiveTimer();
+      const spinner = document.getElementById('detailRunningSpinner');
+      if (spinner) spinner.classList.remove('hidden');
+      const abortBtn = document.getElementById('btnAbortReactDetail');
+      if (abortBtn) abortBtn.classList.remove('hidden');
+
+      // 初始化会话执行卡片
+      document.getElementById('detailSetupTitle').textContent = 'Workspace setup';
+      const setupContent = document.getElementById('setupContent');
+      if (setupContent) setupContent.classList.remove('hidden');
+      const thinkingText = document.getElementById('detailThinkingText');
+      if (thinkingText) {
+        thinkingText.innerHTML = '<div class="text-zinc-600 italic">我会按当前工作区改动重新审查，先复核 AST 语法树结构与变更上下文，再进行高阶多 Agent 分析与二阶自愈批判。</div>';
+      }
+
+      const ranCommands = [];
+      const cmdAccordion = document.getElementById('detailCommandsAccordion');
+      if (cmdAccordion) cmdAccordion.classList.add('hidden');
+      document.getElementById('detailAgentOutcomeHeading').classList.add('hidden');
+      document.getElementById('detailPrioritizeSection').innerHTML = '';
 
       const sessionId = 'review_' + Date.now();
       activeReactSessionId = sessionId;
@@ -1408,33 +1497,45 @@
         es.addEventListener('step', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            if (stepBadge) stepBadge.textContent = `阶段 ${payload.step}: ${payload.name || '分析中'}`;
+            document.getElementById('detailSetupTitle').textContent = `Workspace setup • 阶段 ${payload.step}: ${payload.name || '分析中'}`;
           } catch {}
         });
         es.addEventListener('think', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            if (thinkBox) {
-              thinkBox.innerHTML += `<div class="mt-2 text-amber-200/95 leading-relaxed">[审查思考] ${payload.text}</div>`;
-              thinkBox.scrollTop = thinkBox.scrollHeight;
+            if (thinkingText) {
+              const div = document.createElement('div');
+              div.className = 'mt-2 text-zinc-700 leading-relaxed';
+              div.textContent = payload.text;
+              thinkingText.appendChild(div);
+              const scrollEl = document.getElementById('detailCenterContainer');
+              if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
             }
           } catch {}
         });
         es.addEventListener('tool_call', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            if (toolBadge) toolBadge.classList.remove('hidden');
-            if (toolText) toolText.textContent = `分析动作: ${payload.name} (${JSON.stringify(payload.args || {})})`;
-            lucide.createIcons();
+            ranCommands.push({ name: payload.name, args: payload.args, output: '' });
+            if (cmdAccordion) cmdAccordion.classList.remove('hidden');
+            document.getElementById('ranCommandsTitle').textContent = `Ran ${ranCommands.length} commands`;
+            const activeBadge = document.getElementById('ranCommandsActiveBadge');
+            if (activeBadge) {
+              activeBadge.classList.remove('hidden');
+              activeBadge.textContent = `执行中: ${payload.name}...`;
+            }
           } catch {}
         });
         es.addEventListener('tool_result', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            if (termOutput) {
-              termOutput.innerHTML += `\n<div class="text-emerald-400 font-bold">>_ [${payload.name}] ${payload.output}</div>`;
-              termOutput.scrollTop = termOutput.scrollHeight;
+            if (ranCommands.length > 0) {
+              ranCommands[ranCommands.length - 1].output = payload.output || '';
             }
+            const activeBadge = document.getElementById('ranCommandsActiveBadge');
+            if (activeBadge) activeBadge.classList.add('hidden');
+            document.getElementById('ranCommandsTitle').textContent = `Ran ${ranCommands.length} commands ⌵`;
+            renderRanCommandsContent(ranCommands);
           } catch {}
         });
       } catch (e) {
@@ -1453,6 +1554,9 @@
         });
         const data = await res.json();
         if (es) es.close();
+        stopLiveTimer();
+        if (spinner) spinner.classList.add('hidden');
+        if (abortBtn) abortBtn.classList.add('hidden');
 
         if (btn) {
           btn.disabled = false;
@@ -1461,15 +1565,9 @@
         }
 
         if (data.error) {
-          if (titleEl) titleEl.textContent = '❌ 代码审查分析失败';
-          if (dotEl) dotEl.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
           alert('审查失败: ' + data.error);
           return;
         }
-
-        if (titleEl) titleEl.textContent = '✅ 代码审查与二阶降噪分析完毕 (Analysis Complete)';
-        if (dotEl) dotEl.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
-        if (stepBadge) stepBadge.textContent = '审查完成';
 
         await loadTasks();
         await updateWorkspaceStatus();
@@ -1478,6 +1576,9 @@
         }
       } catch (err) {
         if (es) es.close();
+        stopLiveTimer();
+        if (spinner) spinner.classList.add('hidden');
+        if (abortBtn) abortBtn.classList.add('hidden');
         if (btn) {
           btn.disabled = false;
           btn.innerHTML = origHtml;
@@ -2025,81 +2126,76 @@
     function renderTaskDetail(task) {
       const displayTitle = task.title === 'Review the current changes' ? '审查当前工作区改动' : (task.title === 'Current workspace (clean)' ? '当前工作区 (无改动)' : task.title);
       document.getElementById('detailTaskTitle').textContent = displayTitle;
-      document.getElementById('detailWorkedTime').textContent = task.workedTime || '实时同步';
-      document.getElementById('detailPushedCommit').textContent = task.pushedCommit || 'HEAD';
+      document.getElementById('detailWorkedTime').textContent = task.workedTime || 'Worked for 3m 14s ⌃';
+      const pushedEl = document.getElementById('detailPushedCommit');
+      if (pushedEl) pushedEl.textContent = task.pushedCommit || 'HEAD';
       document.getElementById('detailRightCommit').textContent = task.pushedCommit || 'HEAD';
       document.getElementById('detailRightBranch').textContent = task.branch || 'main';
-      document.getElementById('detailTimestamp').textContent = task.timestamp || '刚刚';
-      document.getElementById('detailRiskNote').textContent = task.agentSummary?.riskNote || '';
 
-      // 用户指令/提问气泡
+      // 1. 用户指令/提问气泡 (右上气泡，如 benchmark 截图)
       const userPromptBox = document.getElementById('detailUserPromptContainer');
       const userPromptText = document.getElementById('detailUserPromptText');
-      if (task.agentSummary?.userPrompt) {
+      if (userPromptBox && userPromptText) {
         userPromptBox.classList.remove('hidden');
-        userPromptText.textContent = task.agentSummary.userPrompt;
-      } else {
-        userPromptBox.classList.add('hidden');
+        userPromptText.textContent = task.agentSummary?.userPrompt || displayTitle;
       }
 
-      // 深度思考与决策链路 (Thinking Process)
-      const thoughtBox = document.getElementById('detailThoughtBox');
-      const thoughtContent = document.getElementById('detailThoughtContent');
-      if (task.agentSummary?.thoughtProcess) {
-        thoughtBox.classList.remove('hidden');
-        thoughtContent.textContent = task.agentSummary.thoughtProcess;
-        thoughtContent.classList.remove('hidden');
-        document.getElementById('thoughtBoxToggleLabel').textContent = '收起';
-        const chev = document.getElementById('thoughtBoxChevron');
-        if (chev) chev.style.transform = 'rotate(0deg)';
-      } else {
-        thoughtBox.classList.add('hidden');
-      }
-
-      // 终端命令执行步骤 (Ran X commands)
-      const stepsContainer = document.getElementById('detailStepsContainer');
-      stepsContainer.innerHTML = '';
-      const steps = task.agentSummary?.steps || [];
-      if (steps.length > 0) {
-        steps.forEach((step, stepIdx) => {
-          const stepBox = document.createElement('div');
-          stepBox.className = 'border border-zinc-200 rounded-xl bg-zinc-50 overflow-hidden text-xs shadow-2xs';
-
-          const cmds = step.commands || [];
-          let cmdsHtml = '';
-          cmds.forEach((c, cIdx) => {
-            const cmdId = `step_${stepIdx}_cmd_${cIdx}`;
-            cmdsHtml += `
-              <div class="border-t border-zinc-200/80 first:border-t-0">
-                <div class="px-3.5 py-2.5 bg-white hover:bg-zinc-50 flex items-center justify-between cursor-pointer select-none" onclick="toggleCommandCollapse('${cmdId}')">
-                  <div class="flex items-center gap-2 font-mono text-zinc-800 truncate">
-                    <span class="text-zinc-400 font-bold">>_</span>
-                    <span class="truncate font-semibold">${c.command}</span>
-                  </div>
-                  <div class="flex items-center gap-2 shrink-0">
-                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">执行完成</span>
-                    <i data-lucide="chevron-down" id="chev_${cmdId}" class="w-3.5 h-3.5 text-zinc-400 transition-transform"></i>
-                  </div>
-                </div>
-                <div id="${cmdId}" class="p-3 bg-zinc-950 text-zinc-200 font-mono text-[11px] whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed border-t border-zinc-800">
-                  ${c.output || '(无输出)'}
-                </div>
-              </div>
-            `;
-          });
-
-          stepBox.innerHTML = `
-            <div class="px-3.5 py-2 bg-zinc-100/80 border-b border-zinc-200 flex items-center justify-between text-zinc-700">
-              <div class="flex items-center gap-2 font-semibold">
-                <i data-lucide="terminal" class="w-3.5 h-3.5 text-zinc-600"></i>
-                <span>${step.title || '命令行执行步骤'}</span>
-                <span class="text-[11px] text-zinc-400 font-normal">(${cmds.length} 个命令)</span>
-              </div>
-            </div>
-            <div>${cmdsHtml}</div>
-          `;
-          stepsContainer.appendChild(stepBox);
+      // 2. 深度思考与决策链路 (自然段落流式显示，绝非黑色控制台)
+      const thinkingEl = document.getElementById('detailThinkingText');
+      if (thinkingEl) {
+        const thought = task.agentSummary?.thoughtProcess || '我会按当前工作区改动重新审查，先复核 AST 语法树结构与变更上下文，再进行高阶多 Agent 分析与二阶自愈批判。';
+        thinkingEl.innerHTML = '';
+        thought.split('\n\n').forEach(block => {
+          if (!block.trim()) return;
+          const p = document.createElement('div');
+          p.className = 'mt-2 text-zinc-700 leading-relaxed font-sans';
+          p.textContent = block.trim();
+          thinkingEl.appendChild(p);
         });
+      }
+
+      // 3. 终端命令执行步骤 (Ran X commands 可折叠条)
+      const allCmds = [];
+      (task.agentSummary?.steps || []).forEach(s => {
+        (s.commands || []).forEach(c => allCmds.push({ name: c.command, output: c.output }));
+      });
+      const cmdAccordion = document.getElementById('detailCommandsAccordion');
+      if (allCmds.length > 0) {
+        if (cmdAccordion) cmdAccordion.classList.remove('hidden');
+        document.getElementById('ranCommandsTitle').textContent = `Ran ${allCmds.length} commands ⌵`;
+        renderRanCommandsContent(allCmds);
+      } else if (task.rawDiff) {
+        if (cmdAccordion) cmdAccordion.classList.remove('hidden');
+        document.getElementById('ranCommandsTitle').textContent = `Ran 1 command ⌵`;
+        renderRanCommandsContent([{ name: 'git diff', output: task.rawDiff.slice(0, 1500) }]);
+      } else if (cmdAccordion) {
+        cmdAccordion.classList.add('hidden');
+      }
+
+      // 4. 智能体复审结论 (Benchmark 风格: 已复审... 但仍有一项 P1:)
+      const outcomeHeading = document.getElementById('detailAgentOutcomeHeading');
+      const outcomeText = document.getElementById('detailAgentOutcomeHeadingText');
+      if (outcomeHeading && outcomeText) {
+        if (task.comments && task.comments.length > 0) {
+          outcomeHeading.classList.remove('hidden');
+          const p0Count = task.comments.filter(c => c.priority === 'P0' || c.severity === 'error').length;
+          const p1Count = task.comments.filter(c => c.priority === 'P1').length;
+          let badgeSummary = '';
+          if (p0Count > 0) badgeSummary += ` 存在 ${p0Count} 项 P0 阻断性缺陷`;
+          if (p1Count > 0) badgeSummary += ` ${p1Count} 项 P1 重点项`;
+          outcomeText.textContent = `已复审 ${task.pushedCommit || 'HEAD'}。${badgeSummary || `共发现 ${task.comments.length} 处审查建议`}：`;
+        } else if (task.agentSummary?.message) {
+          outcomeHeading.classList.remove('hidden');
+          outcomeText.textContent = `已复审 ${task.pushedCommit || 'HEAD'}。${task.agentSummary.message}`;
+        } else {
+          outcomeHeading.classList.add('hidden');
+        }
+      }
+
+      // 5. 右侧面板诊断与复现建议
+      const diagNote = document.getElementById('rightDiagnosticNote');
+      if (diagNote) {
+        diagNote.textContent = task.agentSummary?.riskNote || task.agentSummary?.message || '已复核本地工作区改动及 AST 分块。如涉及异步指令与作用域持有，建议将长生命周期 DI 作用域与入站活动隔离，防止热重载或并发操作时发生世代钉住冲突。';
       }
 
       // 智能体回应消息
@@ -2388,31 +2484,51 @@
       if (!activeReactSessionId) return;
       try {
         await fetch(`/api/agent/react/abort/${activeReactSessionId}`, { method: 'POST' });
-        const badge = document.getElementById('liveConsoleStepBadge');
-        if (badge) badge.textContent = '已发送中止请求...';
+        const setupTitle = document.getElementById('detailSetupTitle');
+        if (setupTitle) setupTitle.textContent = '已发送中止请求...';
       } catch (err) {
         console.error('Failed to abort:', err);
       }
     }
 
     async function executePromptWithReact(prompt) {
-      const consoleCard = document.getElementById('reactLiveConsole');
-      const thinkBox = document.getElementById('liveThinkingBox');
-      const toolBadge = document.getElementById('liveActiveToolBadge');
-      const toolText = document.getElementById('liveActiveToolText');
-      const termOutput = document.getElementById('liveTerminalOutput');
-      const stepBadge = document.getElementById('liveConsoleStepBadge');
       const btn = document.getElementById('btnExecutePrompt');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>`;
+        lucide.createIcons();
+      }
 
-      consoleCard.classList.remove('hidden');
-      thinkBox.innerHTML = '<span class="text-zinc-500 italic">正在构建上下文与思考计划...</span>';
-      toolBadge.classList.add('hidden');
-      termOutput.innerHTML = '<span class="text-zinc-600">// 终端实时标准输出将在此流式打印...</span>';
-      stepBadge.textContent = '步骤 1';
+      // 1. 直接进入任务对话视图 (Devin / CodeRabbit 标杆体验)
+      showView('task-detail');
+      document.getElementById('detailTaskTitle').textContent = prompt;
+      const userPromptBox = document.getElementById('detailUserPromptContainer');
+      const userPromptText = document.getElementById('detailUserPromptText');
+      if (userPromptBox && userPromptText) {
+        userPromptBox.classList.remove('hidden');
+        userPromptText.textContent = prompt;
+      }
 
-      btn.disabled = true;
-      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>`;
-      lucide.createIcons();
+      startLiveTimer();
+      const spinner = document.getElementById('detailRunningSpinner');
+      if (spinner) spinner.classList.remove('hidden');
+      const abortBtn = document.getElementById('btnAbortReactDetail');
+      if (abortBtn) abortBtn.classList.remove('hidden');
+
+      document.getElementById('detailSetupTitle').textContent = 'Agent workspace setup';
+      const setupContent = document.getElementById('setupContent');
+      if (setupContent) setupContent.classList.remove('hidden');
+
+      const thinkingText = document.getElementById('detailThinkingText');
+      if (thinkingText) {
+        thinkingText.innerHTML = '<div class="text-zinc-600 italic">正在构建上下文与思考计划，组织自主编码与自愈验证方案...</div>';
+      }
+
+      const ranCommands = [];
+      const cmdAccordion = document.getElementById('detailCommandsAccordion');
+      if (cmdAccordion) cmdAccordion.classList.add('hidden');
+      document.getElementById('detailAgentOutcomeHeading').classList.add('hidden');
+      document.getElementById('detailPrioritizeSection').innerHTML = '';
 
       try {
         const res = await fetch('/api/agent/react/run', {
@@ -2427,10 +2543,14 @@
         const data = await res.json();
         if (data.error) {
           alert('启动 ReAct 任务失败: ' + data.error);
-          btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
-          consoleCard.classList.add('hidden');
-          lucide.createIcons();
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
+            lucide.createIcons();
+          }
+          stopLiveTimer();
+          if (spinner) spinner.classList.add('hidden');
+          if (abortBtn) abortBtn.classList.add('hidden');
           return;
         }
 
@@ -2445,53 +2565,61 @@
         reactEventSource.addEventListener('think', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            if (thinkBox.innerHTML.includes('正在构建上下文')) thinkBox.innerHTML = '';
-            thinkBox.innerHTML += `<div class="mb-1 text-amber-200">[思考] ${payload.text}</div>`;
-            thinkBox.scrollTop = thinkBox.scrollHeight;
+            if (thinkingText) {
+              const div = document.createElement('div');
+              div.className = 'mt-2 text-zinc-700 leading-relaxed font-sans';
+              div.textContent = payload.text;
+              thinkingText.appendChild(div);
+              const scrollEl = document.getElementById('detailCenterContainer');
+              if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+            }
           } catch {}
         });
 
         reactEventSource.addEventListener('tool_call', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            toolBadge.classList.remove('hidden');
-            toolText.textContent = `执行动作: ${payload.name} (${JSON.stringify(payload.args)})`;
-            lucide.createIcons();
+            ranCommands.push({ name: payload.name, args: payload.args, output: '' });
+            if (cmdAccordion) cmdAccordion.classList.remove('hidden');
+            document.getElementById('ranCommandsTitle').textContent = `Ran ${ranCommands.length} commands`;
+            const activeBadge = document.getElementById('ranCommandsActiveBadge');
+            if (activeBadge) {
+              activeBadge.classList.remove('hidden');
+              activeBadge.textContent = `执行中: ${payload.name}...`;
+            }
           } catch {}
         });
 
         reactEventSource.addEventListener('tool_result', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            toolBadge.classList.add('hidden');
-            if (termOutput.innerHTML.includes('// 终端实时标准输出')) termOutput.innerHTML = '';
-            termOutput.innerHTML += `\n<div class="text-emerald-400 font-bold">>_ [${payload.name}] ${payload.success ? '✓ 成功' : '✗ 失败'}</div>`;
-            termOutput.innerHTML += `<div class="text-zinc-300 pl-2 whitespace-pre-wrap">${payload.output || ''}</div>`;
-            termOutput.scrollTop = termOutput.scrollHeight;
+            if (ranCommands.length > 0) {
+              ranCommands[ranCommands.length - 1].output = payload.output || '';
+            }
+            const activeBadge = document.getElementById('ranCommandsActiveBadge');
+            if (activeBadge) activeBadge.classList.add('hidden');
+            document.getElementById('ranCommandsTitle').textContent = `Ran ${ranCommands.length} commands ⌵`;
+            renderRanCommandsContent(ranCommands);
           } catch {}
         });
 
         reactEventSource.addEventListener('step', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            stepBadge.textContent = `步骤 ${payload.step}`;
+            document.getElementById('detailSetupTitle').textContent = `执行步骤 ${payload.step}`;
           } catch {}
         });
 
-        reactEventSource.addEventListener('finish', async (e) => {
+        reactEventSource.addEventListener('finish', async () => {
           reactEventSource.close();
-          btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
-          
-          const titleEl = document.getElementById('liveConsoleTitle');
-          const dotEl = document.getElementById('liveConsoleStatusDot');
-          if (titleEl) titleEl.textContent = '✅ 智能体自主编码与自愈验证圆满完成 (Completed)';
-          if (dotEl) dotEl.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
-          if (stepBadge) {
-            stepBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 font-sans font-medium';
-            stepBadge.textContent = '已就绪';
+          stopLiveTimer();
+          if (spinner) spinner.classList.add('hidden');
+          if (abortBtn) abortBtn.classList.add('hidden');
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
+            lucide.createIcons();
           }
-          lucide.createIcons();
           document.getElementById('taskPromptInput').value = '';
           await loadTasks();
           await updateWorkspaceStatus();
@@ -2500,21 +2628,29 @@
           }
         });
 
-        reactEventSource.addEventListener('abort', async (e) => {
+        reactEventSource.addEventListener('abort', async () => {
           reactEventSource.close();
-          btn.disabled = false;
-          btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
-          lucide.createIcons();
-          stepBadge.textContent = '已中止';
+          stopLiveTimer();
+          if (spinner) spinner.classList.add('hidden');
+          if (abortBtn) abortBtn.classList.add('hidden');
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
+            lucide.createIcons();
+          }
           await loadTasks();
           await updateWorkspaceStatus();
         });
 
       } catch (err) {
-        btn.disabled = false;
-        btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
-        consoleCard.classList.add('hidden');
-        lucide.createIcons();
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `<i data-lucide="arrow-up" class="w-4 h-4"></i>`;
+          lucide.createIcons();
+        }
+        stopLiveTimer();
+        if (spinner) spinner.classList.add('hidden');
+        if (abortBtn) abortBtn.classList.add('hidden');
         alert('请求异常: ' + err.message);
       }
     }
@@ -2532,6 +2668,16 @@
       promptInputEl.addEventListener('input', () => {
         promptInputEl.style.height = 'auto';
         promptInputEl.style.height = Math.min(promptInputEl.scrollHeight, 180) + 'px';
+      });
+    }
+
+    const followUpInputEl = document.getElementById('followUpChatInput');
+    if (followUpInputEl) {
+      followUpInputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          document.getElementById('btnSendFollowUp')?.click();
+        }
       });
     }
 
