@@ -166,3 +166,17 @@ or remote multi-user browser automation service.
 Beware that the app under test may still call production APIs. Always use a
 separate test environment. Outputs can contain private page data and must not be
 published or committed to a repository.
+
+
+## Opt-in export of reusable Playwright tests
+
+    npm run review -- review --browser --ai-tests --export-tests
+
+This writes reviewed test source into .ai-review/generated-tests/*.spec.ts,
+never directly into the business repository's tests/ folder. Only actually
+executed configured assertions (even if failed) and passing proposed assertions
+are eligible. A generated test is NOT automatically promoted to a product
+requirement or automatically committed. Smoke-only scenarios and click/fill
+actions are skipped to prevent accidental side effects or credential leakage.
+Install @playwright/test in the destination project before running/promoting
+these files, and verify generated selectors/expectations with a developer.
