@@ -28,6 +28,7 @@ vi.mock('../../src/agents/custom.agent.js', () => ({
 }));
 
 import { runOrchestrator } from '../../src/orchestrator/index.js';
+import { recordAgentFailure } from '../../src/agents/telemetry.js';
 import { bugAgent } from '../../src/agents/bug.agent.js';
 import { securityAgent } from '../../src/agents/security.agent.js';
 import { performanceAgent } from '../../src/agents/performance.agent.js';
@@ -105,6 +106,20 @@ describe('runOrchestrator', () => {
       expect.any(Error)
     );
     warnSpy.mockRestore();
+  });
+
+  it('reports failures swallowed internally by an Agent without dropping other results', async () => {
+    vi.mocked(securityAgent).mockImplementationOnce(async () => {
+      recordAgentFailure(new Error('DeepSeek API timed out'));
+      return [];
+    });
+    const failures: Array<{ agent: string; file: string; message: string }> = [];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const comments = await runOrchestrator([mockChunk], parseRepoConfig({}), undefined, errors => failures.push(...errors));
+      expect(comments).toHaveLength(1);
+      expect(failures).toEqual([{ agent: 'security', file: 'a.ts', message: 'DeepSeek API timed out' }]);
+    } finally { warn.mockRestore(); }
   });
 
   it('processes multiple chunks and aggregates all comments', async () => {
