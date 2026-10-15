@@ -25,3 +25,17 @@ jobs:
 
       - name: Run Vitest Suite
         run: npm test
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run real-browser smoke test
+        run: RUN_BROWSER_E2E=1 npx vitest run tests/local-review/browser.integration.test.ts
