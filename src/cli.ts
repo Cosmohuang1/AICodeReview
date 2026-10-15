@@ -7,6 +7,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { loadRepoConfig } from './config/loader.js';
 import { ReviewService } from './services/review.service.js';
+import { registerLocalReviewCommand } from './local-review/command.js';
 import { buildPRBody, buildInlineCommentBody } from './reporter/markdown.reporter.js';
 
 const program = new Command();
@@ -156,5 +157,7 @@ program
       process.exit(1);
     }
   });
+
+registerLocalReviewCommand(program);
 
 program.parse(process.argv);
