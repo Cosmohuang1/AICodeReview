@@ -10,6 +10,7 @@ import { proposeReadOnlyScenarios } from './ai-planner.js';
 import { linkReviewEvidence } from './evidence.js';
 import { renderLocalReviewHTML } from './html.js';
 import { compareWithBaseline } from './baseline.js';
+import { exportPlaywrightTests } from './test-export.js';
 import { loadRepoConfig } from '../config/loader.js';
 import { ReviewService } from '../services/review.service.js';
 import { buildPRBody, buildInlineCommentBody } from '../reporter/markdown.reporter.js';
@@ -65,6 +66,7 @@ export function registerLocalReviewCommand(program: Command): void {
     .option('--browser-only', 'skip DeepSeek code review and run browser verification')
     .option('--ai-tests', 'opt into read-only AI-proposed UI test scenarios')
     .option('--baseline-url <url>', 'compare configured assertions against a separately running local baseline')
+    .option('--export-tests', 'export executed read-only plans into .ai-review/generated-tests')
     .option('--url <url>', 'local application base URL')
     .option('--server-mode <mode>', 'existing | managed')
     .option('--browser-connection <mode>', 'isolated | cdp')
@@ -75,7 +77,7 @@ export function registerLocalReviewCommand(program: Command): void {
     .option('-o, --output <path>', 'Markdown report path')
     .action(async (options: {
       scope: GitScope; base?: string; includeUntracked?: boolean;
-      browser?: boolean; browserOnly?: boolean; aiTests?: boolean; baselineUrl?: string; url?: string;
+      browser?: boolean; browserOnly?: boolean; aiTests?: boolean; baselineUrl?: string; exportTests?: boolean; url?: string;
       serverMode?: 'existing' | 'managed'; browserConnection?: 'isolated' | 'cdp';
       cdpEndpoint?: string; approveServerStart?: boolean; approveCdp?: boolean;
       config: string; output?: string;
@@ -160,6 +162,17 @@ export function registerLocalReviewCommand(program: Command): void {
             approveServerStart: Boolean(options.approveServerStart),
             approveCDP: Boolean(options.approveCdp), endpoint: options.cdpEndpoint
           });
+          if (options.exportTests) {
+            const byId = new Map(browser.scenarios.map(s => [s.id, s]));
+            const eligible = planned.filter(s => {
+              const outcome = byId.get(s.id);
+              return outcome && (outcome.status === 'passed' ||
+                (outcome.status === 'failed' && s.expectationSource === 'configured'));
+            });
+            const exported = exportPlaywrightTests(cwd, eligible, browserConfig.baseURL);
+            browser.warnings.push(...exported.skipped);
+            if (exported.saved.length) console.log('Reviewable Playwright tests: ' + exported.saved.join(', '));
+          }
           if (options.baselineUrl) {
             // Baseline must already be served independently. Never start commands
             // against an old Git tree or access personal Chrome for the baseline.
