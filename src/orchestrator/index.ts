@@ -6,6 +6,9 @@ import { testAgent } from '../agents/test.agent.js';
 import { customAgent } from '../agents/custom.agent.js';
 import type { CodeChunk, ReviewComment } from '../agents/types.js';
 import type { RepoConfig } from '../config/schema.js';
+import { traceAgent } from '../agents/telemetry.js';
+
+export interface AgentFailure { agent: string; file: string; message: string; }
 
 const ALL_AGENTS = [
   { name: 'bug', fn: bugAgent },
@@ -25,11 +28,13 @@ export type OrchestratorProgressCallback = (
 export async function runOrchestrator(
   chunks: CodeChunk[],
   config: RepoConfig,
-  onProgress?: OrchestratorProgressCallback
+  onProgress?: OrchestratorProgressCallback,
+  onDiagnostics?: (failures: AgentFailure[]) => void
 ): Promise<ReviewComment[]> {
-  if (chunks.length === 0) return [];
+  if (chunks.length === 0) { onDiagnostics?.([]); return []; }
 
   const allComments: ReviewComment[] = [];
+  const failures: AgentFailure[] = [];
   const concurrency = 4; // 并发度设为 4，大幅提升大工程走查速度
   let completedCount = 0;
 
@@ -39,14 +44,23 @@ export async function runOrchestrator(
   for (const chunk of chunks) {
     const task: Promise<void> = (async () => {
       const results = await Promise.allSettled(
-        ALL_AGENTS.map(agent => agent.fn(chunk, config))
+        ALL_AGENTS.map(async agent => {
+          const telemetry = { failures: [] as string[] };
+          const comments = await traceAgent(telemetry, () => agent.fn(chunk, config));
+          return { comments, telemetry };
+        })
       );
 
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
         if (result.status === 'fulfilled') {
-          allComments.push(...result.value);
+          allComments.push(...result.value.comments);
+          for (const message of result.value.telemetry.failures) {
+            failures.push({ agent: ALL_AGENTS[i].name, file: chunk.file, message });
+            console.warn('[ai-review] Agent "' + ALL_AGENTS[i].name + '" model failed for ' + chunk.file + ': ' + message);
+          }
         } else {
+          failures.push({ agent: ALL_AGENTS[i].name, file: chunk.file, message: String(result.reason).slice(0, 300) });
           console.warn(`[ai-review] Agent "${ALL_AGENTS[i].name}" failed for ${chunk.file}:`, result.reason);
         }
       }
@@ -68,6 +82,7 @@ export async function runOrchestrator(
 
   // 等待所有剩余的 chunk 任务完成
   await Promise.allSettled(Array.from(executing));
+  onDiagnostics?.(failures);
 
   if (config.severityOverride && Object.keys(config.severityOverride).length > 0) {
     return allComments.map(c => ({
