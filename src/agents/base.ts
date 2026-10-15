@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import OpenAI from 'openai';
 import type { ReviewComment } from './types.js';
+import { recordAgentFailure } from './telemetry.js';
 
 let cachedClient: OpenAI | null = null;
 let lastApiKey: string | undefined;
@@ -59,6 +60,7 @@ export async function callDeepSeek(
     }
   }
 
+  recordAgentFailure(lastError);
   throw lastError;
 }
 
