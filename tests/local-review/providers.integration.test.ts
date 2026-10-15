@@ -56,6 +56,30 @@ browserDescribe('managed server and dedicated Chrome CDP providers', () => {
     expect(out.warnings.join(' ')).toContain('--approve-server-start');
   });
 
+  it('starts a configured local dev server after approval and stops the managed process', async () => {
+    const probe = createServer();
+    await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve));
+    const address = probe.address();
+    if (!address || typeof address === 'string') throw new Error('No port');
+    const port = address.port;
+    await new Promise<void>(resolve => probe.close(() => resolve()));
+    const config = loadBrowserConfig(null);
+    config.server.mode = 'managed';
+    config.server.command = process.execPath;
+    config.server.args = [
+      '-e',
+      'require("node:http").createServer((req,res)=>res.end("<!doctype html><main>OK</main>")).listen(' +
+        port + ',"127.0.0.1")'
+    ];
+    config.server.startupTimeoutMs = 12000;
+    const result = await runBrowserVerification({
+      cwd: process.cwd(), config, baseURL: 'http://127.0.0.1:' + port,
+      scenarios: [scenario], unmappedFiles: [], warnings: [],
+      artifactDir: folder, approveServerStart: true, approveCDP: false
+    });
+    expect(result.status, JSON.stringify(result)).toBe('passed');
+  }, 30000);
+
   it('runs against a dedicated CDP Chrome browser profile', async () => {
     // Browser executable comes from npx playwright install --with-deps chromium.
     const debugServer = createServer();
