@@ -281,5 +281,9 @@ export class SqliteStorage {
 }
 
 
-export const defaultSqliteStorage = new SqliteStorage();
+// Vitest workers must never contend for the same default on-disk SQLite DB.
+// Production storage remains persistent at data/ai-review.db.
+export const defaultSqliteStorage = new SqliteStorage(
+  process.env.NODE_ENV === 'test' || process.env.VITEST ? ':memory:' : undefined
+);
 export default SqliteStorage;

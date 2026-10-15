@@ -25,11 +25,11 @@ describe('app server', () => {
     });
   });
 
-  it('GET /health returns 200 with status ok and version 0.1.0', async () => {
+  it('GET /health returns 200 with status ok and version 0.2.0', async () => {
     const res = await fetch(`${baseUrl}/health`);
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data).toEqual({ status: 'ok', version: '0.1.0' });
+    expect(data).toEqual({ status: 'ok', version: '0.2.0' });
   });
 
   it('POST /webhook without signature returns 401', async () => {

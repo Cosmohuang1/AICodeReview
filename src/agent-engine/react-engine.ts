@@ -3,6 +3,7 @@ import path from 'node:path';
 import { AGENT_TOOLS, executeAgentTool } from './tools/index.js';
 import { defaultReactStreamer, ReactStreamer } from './react-streamer.js';
 import { GitService } from '../services/git.service.js';
+import { detectProjectTests, verifyProjectTests, type ProjectTestReport } from '../testing/project-tests.js';
 
 export interface ReactEngineParams {
   cwd: string;
@@ -12,6 +13,7 @@ export interface ReactEngineParams {
   testCmd?: string;
   branchName?: string;
   autoCommit?: boolean;
+  runTests?: boolean;
   streamer?: ReactStreamer;
   llmCaller?: (messages: any[], tools: any[], signal?: AbortSignal) => Promise<any>;
 }
@@ -36,6 +38,7 @@ export interface ReactEngineResult {
   bulletPoints: string[];
   riskNote: string;
   regressionStatus: string;
+  projectTesting?: ProjectTestReport;
   editedFiles: Array<{ path: string; additions: number; deletions: number }>;
   totalAdditions: number;
   totalDeletions: number;
@@ -59,6 +62,7 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
   const maxSteps = params.maxSteps || 8;
   const gitService = new GitService();
   const isGit = gitService.isGitRepo(cwd);
+  const detectedTests = detectProjectTests(cwd);
   const initialStatus = isGit
     ? gitService.getWorkspaceStatus(cwd)
     : {
@@ -102,7 +106,7 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
 行动准则与自愈工作流:
 1. 严禁凭空盲猜代码。先调用 read_file、search_code 或 list_dir 探测代码结构；
 2. 如需修改代码，必须调用 edit_file 进行精准局部替换（严谨核对原始代码块）；
-3. 修改后若有测试或校验命令（例如 ${params.testCmd || 'npm test'}），调用 run_command 真实执行验证；
+3. 按已识别的项目类型选择测试：${detectedTests.projects.map(p => p.kind + '/' + p.directory + ': ' + (p.command ? [p.command.executable, ...p.command.args].join(' ') : '未配置测试')).join('; ') || '未发现测试项目'}；未经验证不得声称测试通过；
 4. 若命令报错或测试未通过（退出码非 0），不要恐慌，仔细分析报错堆栈与失败原因，再次调用 edit_file 针对性修复，直到全部通过；
 5. 当你确认任务已彻底完成、或无需修改代码即可向用户解答时，直接给出最终详细回应，不要附带任何 tool_calls；
 6. 所有的思考分析过程（Thought）与回应内容必须全程使用中文。`;
@@ -131,6 +135,7 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
   let finalMessage = '';
   let isFinished = false;
   let isAborted = false;
+  let editedSuccessfully = false;
 
   for (let stepIdx = 1; stepIdx <= maxSteps; stepIdx++) {
     if (abortSignal.aborted) {
@@ -154,7 +159,7 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
       if (toolCalls.length === 0) {
         finalMessage = thinkContent;
         isFinished = true;
-        streamer.broadcast(sessionId, 'finish', { text: finalMessage });
+        // Emit finish only after the actual post-edit test verification.
         break;
       }
 
@@ -188,12 +193,21 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
         });
 
         // 真实执行工具
-        const toolResult = await executeAgentTool(cwd, funcName, funcArgs);
+        const toolResult = await executeAgentTool(cwd, funcName, funcArgs, {
+          signal: abortSignal,
+          onOutput: (stream, chunk) => streamer.broadcast(sessionId, 'tool_output', {
+            callId: call.id, name: funcName, stream, chunk
+          })
+        });
+        if (funcName === 'edit_file' && toolResult.success) editedSuccessfully = true;
 
         streamer.broadcast(sessionId, 'tool_result', {
           callId: call.id,
           name: funcName,
           success: toolResult.success,
+          exitCode: toolResult.exitCode,
+          durationMs: toolResult.durationMs,
+          timedOut: toolResult.timedOut,
           output: toolResult.output,
         });
 
@@ -236,11 +250,8 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
     }
   }
 
-  if (!isFinished && !isAborted) {
-    streamer.broadcast(sessionId, 'finish', {
-      text: finalMessage || '自主控制循环已达到步数限制并完成当前阶段操作。',
-    });
-  }
+  // Finish is emitted below after mandatory post-edit verification. A model's
+  // final sentence is not evidence that a command or test has run.
 
   // 结算耗时与状态
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - startTime) / 1000));
@@ -264,12 +275,75 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
   const rawDiff = isGit
     ? (gitService.getUnifiedDiff(cwd) || '// 当前工作区无未暂存改动')
     : '// 非 Git 仓库环境';
+  const projectTesting = await verifyProjectTests(
+    cwd,
+    editedSuccessfully ? detectProjectTests(cwd, updatedStatus.changedFiles.map(f => f.path)) : detectedTests,
+    editedSuccessfully && params.runTests !== false,
+    90_000,
+    event => {
+      const callId = 'project-test:' + event.project.kind + ':' + event.project.directory;
+      if (event.phase === 'start') {
+        streamer.broadcast(sessionId, 'tool_call', {
+          callId, name: 'project-test', args: { command: event.command }
+        });
+      } else if (event.phase === 'output') {
+        streamer.broadcast(sessionId, 'tool_output', {
+          callId, name: 'project-test', stream: event.stream, chunk: event.chunk
+        });
+      } else if (event.result) {
+        streamer.broadcast(sessionId, 'tool_result', {
+          callId, name: 'project-test',
+          success: event.result.status === 'passed',
+          status: event.result.status,
+          exitCode: event.result.exitCode,
+          durationMs: event.result.durationMs,
+          observedPassed: event.result.observedPassed,
+          observedFailed: event.result.observedFailed,
+          output: event.result.outputSnippet || event.result.reason
+        });
+      }
+    }
+  );
+  const regressionStatus = !editedSuccessfully
+    ? '未执行测试（本次没有成功修改文件）'
+    : projectTesting.status === 'passed'
+      ? '自动发现的项目测试已通过'
+      : projectTesting.status === 'no-tests'
+        ? '找不到可运行的项目测试；未验证'
+        : projectTesting.status === 'failed'
+          ? '项目测试失败'
+          : projectTesting.status === 'not-run'
+            ? '用户关闭了测试执行；未验证'
+            : '项目测试部分完成 / 环境不可用 / 缺少可验证的通过用例';
+  if (editedSuccessfully) {
+    const commands = projectTesting.executions.map(e => ({
+      command: [e.project.command?.executable, ...(e.project.command?.args || [])].filter(Boolean).join(' '),
+      output: e.reason + '\n' + e.outputSnippet.slice(-2400)
+    }));
+    stepsList.push({
+      title: '项目测试发现与真实验证',
+      commands: commands.length ? commands : [{
+        command: 'Project discovery (read-only)',
+        output: projectTesting.projects.map(p => p.kind + ': ' + p.note).join('\n') +
+          '\nResult: ' + regressionStatus
+      }]
+    });
+    streamer.broadcast(sessionId, 'tool_result', {
+      name: 'project-test-verification', success: projectTesting.status === 'passed',
+      output: regressionStatus
+    });
+  }
+  const finalReportedMessage = (finalMessage || (isAborted ? '任务已被用户中止。' :
+    '执行达到当前步数限制或未提供最终回复。')) + '\n\n【真实项目测试】' + regressionStatus;
+  // The API broadcasts finish after persisting the completed task and logs.
+
 
   const taskId = `task_${Date.now()}`;
   const branchName = params.branchName || `task/task-${Date.now().toString().slice(-5)}`;
   let commitHash = 'pending';
 
-  if (isGit && params.autoCommit !== false && updatedStatus.hasChanges) {
+  if (isGit && params.autoCommit !== false && updatedStatus.hasChanges &&
+      editedSuccessfully && projectTesting.status === 'passed') {
     try {
       gitService.createBranch(cwd, branchName);
       commitHash = gitService.commitAll(cwd, finalMessage.slice(0, 72) || 'feat: autonomous agent patch update');
@@ -292,7 +366,7 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
   if (isAborted) {
     bulletPoints.push('任务已被用户手动中止');
   } else if (updatedStatus.hasChanges) {
-    bulletPoints.push(`自主 ReAct 闭环完成了 ${editedFiles.length} 个文件的代码编辑与校验`);
+    bulletPoints.push(`ReAct 修改了 ${editedFiles.length} 个文件；项目测试状态：${regressionStatus}`);
     bulletPoints.push(`累计修改代码行数：+${updatedStatus.totalAdditions} -${updatedStatus.totalDeletions}`);
   } else {
     bulletPoints.push('已完成意图解析与环境探索，当前无需任何代码修改');
@@ -300,18 +374,20 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
 
   return {
     id: taskId,
-    success: isFinished && !isAborted,
+    success: isFinished && !isAborted && (!editedSuccessfully || projectTesting.status === 'passed'),
     aborted: isAborted,
     title: finalMessage.slice(0, 60) || (isAborted ? '任务已被中止' : '完成自主 ReAct 任务'),
     branch: branchName,
     commitHash: commitHash !== 'pending' ? commitHash : (initialStatus.lastCommit.hash || 'HEAD'),
     userPrompt: params.prompt,
     thoughtProcess,
-    message: finalMessage || (isAborted ? '任务已被用户手动中止。' : '自主控制循环已完成执行。'),
+    message: finalReportedMessage,
     steps: stepsList,
     bulletPoints,
-    riskNote: '经过本地真实 ReAct 状态机校验，命令执行日志完整可追溯。',
-    regressionStatus: '本地环境就绪',
+    riskNote: '项目测试状态：' + regressionStatus +
+      (editedSuccessfully && projectTesting.status !== 'passed' ? '；自动提交已禁止。' : ''),
+    regressionStatus,
+    projectTesting,
     editedFiles,
     totalAdditions: updatedStatus.totalAdditions,
     totalDeletions: updatedStatus.totalDeletions,

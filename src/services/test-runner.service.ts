@@ -37,14 +37,11 @@ export class TestRunnerService {
       total = passed + failed;
     }
 
+    // Do not manufacture a passed test for a silent exit 0.
+    // An empty/unrecognized summary means the case count is unknown.
     if (total === 0) {
-      if (exitCode === 0) {
-        passed = 1;
-        total = 1;
-      } else {
-        failed = 1;
-        total = 1;
-      }
+      passed = 0;
+      failed = 0;
     }
 
     // 提取最后 30 行或 1500 字符作为 snippet

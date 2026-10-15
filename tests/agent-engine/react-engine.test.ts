@@ -84,12 +84,49 @@ describe('ReactEngine (自主 ReAct 自愈循环引擎)', () => {
       llmCaller: mockLlm
     });
 
-    expect(result.success).toBe(true);
+    // No project test manifest exists in this fixture. Editing works but
+    // success must not be reported until a real regression test has passed.
+    expect(result.success).toBe(false);
+    expect(result.regressionStatus).toMatch(/找不到可运行的项目测试/);
+    expect(result.projectTesting?.status).toBe('no-tests');
     expect(mockLlm).toHaveBeenCalledTimes(2);
     const updated = fs.readFileSync(codeFile, 'utf-8');
     expect(updated).toContain('return a + b;');
   });
 
+
+  it('streams command output by callId, with exit metadata, before final completion', async () => {
+    const streamer = new ReactStreamer();
+    const records: Array<{ event: string; payload: any }> = [];
+    vi.spyOn(streamer, 'broadcast').mockImplementation((_id, event, payload) => {
+      records.push({ event, payload });
+    });
+    const llm = vi.fn()
+      .mockResolvedValueOnce({
+        role: 'assistant',
+        content: 'Running a build fixture',
+        tool_calls: [{
+          id: 'cmd-stream-1', type: 'function',
+          function: { name: 'run_command', arguments: JSON.stringify({
+            command: 'node -e "process.stdout.write(\'build-output\')"'
+          }) }
+        }]
+      })
+      .mockResolvedValueOnce({ role: 'assistant', content: 'Finished.', tool_calls: [] });
+    const result = await runReactEngine({
+      cwd: tmpDir, prompt: 'Check logs', maxSteps: 3,
+      streamer, autoCommit: false, llmCaller: llm
+    });
+    expect(result.success).toBe(true);
+    const start = records.findIndex(e => e.event === 'tool_call' && e.payload.callId === 'cmd-stream-1');
+    const data = records.findIndex(e => e.event === 'tool_output' &&
+      e.payload.callId === 'cmd-stream-1' && e.payload.chunk.includes('build-output'));
+    const finish = records.findIndex(e => e.event === 'tool_result' &&
+      e.payload.callId === 'cmd-stream-1' && e.payload.exitCode === 0);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(data).toBeGreaterThan(start);
+    expect(finish).toBeGreaterThan(data);
+  });
   it('收到中止信号时提前退出', async () => {
     const streamer = new ReactStreamer();
     const sessionId = 'test-abort-session';

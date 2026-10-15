@@ -291,3 +291,11 @@ ai-review/
 ## 📄 许可说明
 
 本项目遵循 [MIT License](LICENSE) 开源协议。
+
+
+## 🔬 本地浏览器验证（新功能）
+
+使用 `ai-review review --browser` 审查本地 Git 改动，并依据 `.ai-review.yml` 中的文件到路由映射，使用 Playwright 验证受影响页面；`--browser-only` 不需要 DeepSeek API Key。默认连接已运行的 localhost 服务并启动隔离 Chromium。详细配置、安全限制和退出码见 [Local Browser Verification](docs/local-browser-review.md)。
+
+
+本地浏览器验证 Web 控制台：在显式启用本地 API 并设置访问令牌后，打开 `/local-review.html`。安全配置和 CLI 示例见 [详细说明](docs/local-browser-review.md)。

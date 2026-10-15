@@ -2,7 +2,7 @@ import path from 'node:path';
 import { parseDiff, type ParsedFile } from '../parser/diff.parser.js';
 import { chunkFiles } from '../parser/chunker.js';
 import { runDeterministicRules } from '../rules/deterministic.engine.js';
-import { runOrchestrator } from '../orchestrator/index.js';
+import { runOrchestrator, type AgentFailure } from '../orchestrator/index.js';
 import { deduplicateComments } from '../filter/deduplicator.js';
 import { selfCritique } from '../filter/self-critique.js';
 import { anchorComments } from '../parser/position.anchorer.js';
@@ -31,6 +31,9 @@ export interface ReviewExecutionOptions {
 }
 
 export interface ReviewResult {
+  agentCompletion?: 'complete' | 'partial' | 'unknown';
+  agentFailures?: AgentFailure[];
+  summaryFailed?: boolean;
   parsedFiles: ParsedFile[];
   analyzedFiles: ParsedFile[];
   chunks: CodeChunk[];
@@ -157,7 +160,12 @@ export class ReviewService {
       concurrency: 4,
     });
 
-    const rawComments = await runOrchestrator(chunks, config, onProgress);
+    let agentFailures: AgentFailure[] = [];
+    let agentCompletion: 'complete' | 'partial' | 'unknown' = 'unknown';
+    const rawComments = await runOrchestrator(chunks, config, onProgress, failures => {
+      agentFailures = failures;
+      agentCompletion = failures.length > 0 ? 'partial' : 'complete';
+    });
 
     // 7. 跨 Agent 智能去重与聚合
     const combinedComments = deduplicateComments([...deterministicComments, ...rawComments]);
@@ -217,20 +225,15 @@ export class ReviewService {
     onThink?.('正在生成全局审查总结报告、关键修改项列表与回归风险提示...');
 
     let summary: PRSummary;
+    let summaryFailed = false;
     try {
       summary = await summaryAgent(contextTitle, topDeepFiles, config);
     } catch {
+      summaryFailed = true;
       summary = {
-        overview: config.language === 'en' ? 'AI Review completed.' : 'AI Review 完成。',
+        overview: config.language === 'en' ? 'Summary model failed; review summary is incomplete.' : '总结模型调用失败；本次审查摘要不完整。',
         walkthrough: [],
-        mermaidDiagram: '',
-        assessments: {
-          security: '静态扫描未发现高危安全隐患',
-          bug: '边界条件与空值校验通过',
-          performance: '未引入异常高耗时调用',
-          style: '符合工程代码规范',
-          test: '单元测试覆盖评估正常'
-        }
+        mermaidDiagram: ''
       };
     }
 
@@ -238,6 +241,9 @@ export class ReviewService {
       parsedFiles,
       analyzedFiles: topDeepFiles,
       chunks,
+      agentCompletion,
+      agentFailures,
+      summaryFailed,
       deterministicCount: deterministicComments.length,
       rawCount: rawComments.length,
       comments: enrichedComments,

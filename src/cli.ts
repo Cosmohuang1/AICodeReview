@@ -7,6 +7,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { loadRepoConfig } from './config/loader.js';
 import { ReviewService } from './services/review.service.js';
+import { registerLocalReviewCommand } from './local-review/command.js';
 import { buildPRBody, buildInlineCommentBody } from './reporter/markdown.reporter.js';
 
 const program = new Command();
@@ -14,7 +15,7 @@ const program = new Command();
 program
   .name('ai-review')
   .description('对标 CodeRabbit 的本地与企业级 AI 代码审查工具 (DeepSeek 驱动)')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .command('diff', { isDefault: true })
@@ -156,5 +157,7 @@ program
       process.exit(1);
     }
   });
+
+registerLocalReviewCommand(program);
 
 program.parse(process.argv);

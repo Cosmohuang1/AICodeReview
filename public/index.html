@@ -342,6 +342,11 @@
         </div>
       </div>
       <div class="flex items-center gap-2 shrink-0">
+        <label class="flex items-center gap-1.5 text-[11px] text-zinc-600 cursor-pointer"
+               title="自动识别 Java、C#、Node.js、Python 测试配置；勾选后才执行项目测试脚本，不自动安装依赖">
+          <input id="reviewRunTests" type="checkbox" class="rounded border-zinc-300 text-orange-500">
+          执行项目测试
+        </label>
         <button id="btnReviewCurrentChanges" onclick="reviewCurrentChanges()" class="px-3.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-xs font-semibold text-white shadow-xs flex items-center gap-2 transition-all cursor-pointer hover:shadow-sm">
           <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
           <span>一键审查当前变更</span>
@@ -591,25 +596,26 @@
           <div class="text-[11px] text-zinc-600 space-y-1.5 leading-normal">
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span id="verificationTestText">针对性仓库测试：<strong id="verificationPassedTests" class="text-emerald-600 font-semibold">262 通过</strong>，<span id="verificationFailedTests">0 失败</span>，0 跳过；包含全量套件验证。</span>
+              <span id="verificationTestText">自动化测试：<strong id="verificationPassedTests" class="text-zinc-600 font-semibold">未运行</strong>，<span id="verificationFailedTests">通过/失败数量未知</span>。</span>
             </div>
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span id="verificationBuildText">静态编译与代码语法树（AST）扫描就绪。</span>
+              <span id="verificationBuildText">静态编译：尚未执行。</span>
             </div>
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span>多 Agent 并发走查：6 大专家 Agent 深度核验通过。</span>
+              <span>多 Agent 静态审查：以本次实际执行日志为准。</span>
             </div>
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span>二阶批判自愈降噪：Self-Critique 过滤误报通过。</span>
+              <span>Self-Critique：是否完成以本次任务记录为准。</span>
             </div>
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span class="font-mono text-zinc-700">git diff --check</span> <span id="verificationGitDiffStatus">通过，工作区源代码完整。</span>
+              <span class="font-mono text-zinc-700">git diff --check</span> <span id="verificationGitDiffStatus">尚未执行。</span>
             </div>
           </div>
+          <pre id="verificationStreamingLog" class="hidden mt-2 p-2 rounded-lg bg-zinc-950 text-zinc-200 text-[10px] font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto" aria-live="polite"></pre>
         </div>
 
         <!-- 代码分支与提交 -->
@@ -1577,7 +1583,7 @@
       lucide.createIcons();
     }
 
-    function renderSingleCommandRow(cmdId, isSuccess, cmdText, output, isRunning = false) {
+    function renderSingleCommandRow(cmdId, isSuccess, cmdText, output, isRunning = false, exitCode, durationMs) {
       let statusIcon;
       let textClass = 'text-zinc-700';
       let displayCmd = cmdText;
@@ -1594,6 +1600,12 @@
         displayCmd = cmdText.startsWith('Command did not finish') ? cmdText : `Command did not finish: ${cmdText}`;
       }
 
+      if (!isRunning && exitCode !== undefined && exitCode !== null) {
+        displayCmd += ' [exit ' + exitCode + (durationMs !== undefined ? ', ' + durationMs + 'ms' : '') + ']';
+      }
+      const outputText = output || (isRunning
+        ? '// 程序运行中，等待 stdout/stderr 输出...'
+        : '// 命令已结束但没有 stdout/stderr；请核对退出码与测试统计');
       return `
         <div class="border-t border-zinc-100 first:border-t-0">
           <div class="px-3.5 py-2 flex items-center justify-between cursor-pointer hover:bg-zinc-50 transition-colors select-none group" onclick="toggleSingleCommandOutput('${cmdId}')">
@@ -1604,7 +1616,7 @@
             <i data-lucide="chevron-down" id="chev_${cmdId}" class="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-600 shrink-0 transition-transform"></i>
           </div>
           <div id="out_${cmdId}" class="hidden p-3 bg-zinc-950 text-zinc-200 font-mono text-[11px] max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed border-t border-zinc-800">
-            ${output ? escapeHtml(output) : '// 执行完成，无标准输出'}
+            ${escapeHtml(outputText)}
           </div>
         </div>
       `;
@@ -1622,7 +1634,7 @@
             <i data-lucide="chevron-up" id="chev_${groupId}" class="w-3.5 h-3.5 text-zinc-400 transition-transform ${isExpanded ? '' : 'rotate-180'}"></i>
           </div>
           <div id="content_${groupId}" class="${isExpanded ? '' : 'hidden'} border-t border-zinc-100 divide-y divide-zinc-100">
-            ${commands.map((c, i) => renderSingleCommandRow(`${groupId}_cmd_${i}`, c.success !== false, c.command || c.name || 'cmd', c.output, c.running)).join('')}
+            ${commands.map((c, i) => renderSingleCommandRow(`${groupId}_cmd_${i}`, c.success !== false, c.command || c.name || 'cmd', c.output, c.running, c.exitCode, c.durationMs)).join('')}
           </div>
         </div>
       `;
@@ -1631,7 +1643,7 @@
     function renderRanCommandsContent(commands, containerId = 'ranCommandsContent') {
       const container = document.getElementById(containerId);
       if (!container) return;
-      container.innerHTML = commands.map((c, i) => renderSingleCommandRow(`${containerId}_cmd_${i}`, c.success !== false, c.command || c.name || 'cmd', c.output, c.running)).join('');
+      container.innerHTML = commands.map((c, i) => renderSingleCommandRow(`${containerId}_cmd_${i}`, c.success !== false, c.command || c.name || 'cmd', c.output, c.running, c.exitCode, c.durationMs)).join('');
       lucide.createIcons();
     }
 
@@ -1701,47 +1713,77 @@
       if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
     }
 
-    function handleLiveToolCall(toolName, args) {
+    // Match streamed output and completion by tool-call ID, not by "last row".
+    // This keeps stdout/stderr attributed correctly even with concurrent events.
+    function findLiveTool(callId) {
+      for (const group of liveCommandGroups) {
+        const index = group.commands.findIndex(c => c.callId === callId);
+        if (index >= 0) return { group, command: group.commands[index], index };
+      }
+      return null;
+    }
+
+    function handleLiveToolCall(toolName, args, callId) {
       const stream = document.getElementById('liveStreamItems');
       if (!stream) return;
+      if (callId && findLiveTool(callId)) return;
 
       if (!currentLiveGroupId) {
         const groupId = 'group_' + Date.now();
         currentLiveGroupId = groupId;
         liveCommandGroups.push({ id: groupId, commands: [] });
-
         const groupDiv = document.createElement('div');
         groupDiv.id = 'container_' + groupId;
-        groupDiv.innerHTML = renderCommandGroupHtml(groupId, 'Ran 1 command', [], true, true);
+        groupDiv.innerHTML = renderCommandGroupHtml(groupId, 'Commands', [], true, true);
         stream.appendChild(groupDiv);
       }
 
-      const currentGroup = liveCommandGroups.find(g => g.id === currentLiveGroupId);
-      if (currentGroup) {
-        const cmdStr = (args && args.command) ? args.command : (args && args.query ? `rg "${args.query}"` : toolName);
-        currentGroup.commands.push({
-          command: cmdStr,
-          name: toolName,
-          output: '',
-          running: true,
-          success: true
-        });
-        updateLiveCommandGroupUI(currentGroup);
+      const group = liveCommandGroups.find(g => g.id === currentLiveGroupId);
+      if (!group) return;
+      const cmdStr = args?.command || (args?.query ? 'search: ' + args.query : toolName);
+      group.commands.push({
+        callId: callId || ('legacy_' + group.commands.length),
+        command: cmdStr, name: toolName,
+        output: '', running: true, success: null,
+        exitCode: null, durationMs: null
+      });
+      updateLiveCommandGroupUI(group);
+    }
+
+    function handleLiveToolOutput(callId, stream, chunk) {
+      const found = findLiveTool(callId);
+      if (!found || typeof chunk !== 'string') return;
+      const prefix = stream === 'stderr' ? '[stderr] ' : '';
+      found.command.output = (found.command.output + prefix + chunk).slice(-256 * 1024);
+      const outputEl = document.getElementById('out_' + found.group.id + '_cmd_' + found.index);
+      if (outputEl) {
+        // textContent is intentional: compiler output is untrusted text, never HTML.
+        outputEl.textContent = found.command.output;
+        outputEl.scrollTop = outputEl.scrollHeight;
+        outputEl.classList.remove('hidden');
       }
     }
 
-    function handleLiveToolResult(toolName, success, output) {
-      if (!currentLiveGroupId) return;
-      const currentGroup = liveCommandGroups.find(g => g.id === currentLiveGroupId);
-      if (!currentGroup) return;
-
-      const lastCmd = currentGroup.commands[currentGroup.commands.length - 1];
-      if (lastCmd) {
-        lastCmd.running = false;
-        lastCmd.success = success !== false;
-        lastCmd.output = output || '';
+    function handleLiveToolResult(toolName, success, output, callId, meta = {}) {
+      const found = callId ? findLiveTool(callId) :
+        (() => {
+          const group = liveCommandGroups.find(g => g.id === currentLiveGroupId);
+          if (!group) return null;
+          const index = group.commands.findLastIndex(c => c.running);
+          return index < 0 ? null : { group, command: group.commands[index], index };
+        })();
+      if (!found) return;
+      found.command.running = false;
+      found.command.success = success === true;
+      if (!found.command.output) found.command.output = typeof output === 'string' ? output : '';
+      found.command.exitCode = meta.exitCode;
+      found.command.durationMs = meta.durationMs;
+      updateLiveCommandGroupUI(found.group);
+      const outputEl = document.getElementById('out_' + found.group.id + '_cmd_' + found.index);
+      if (outputEl && found.command.output) {
+        outputEl.classList.remove('hidden');
+        outputEl.scrollTop = outputEl.scrollHeight;
       }
-      updateLiveCommandGroupUI(currentGroup);
     }
 
     function updateLiveCommandGroupUI(group) {
@@ -1768,7 +1810,10 @@
       md += `## 审查建议 (${comments.length})\n\n`;
       comments.forEach((c, i) => {
         md += `### ${i + 1}. [${c.priority || 'P1'}] ${c.message}\n`;
-        md += `**File**: \`${c.file}:${c.line}\` | **Category**: ${c.category}\n\n`;
+        md += `**File**: \`${String(findingLocationPath(c)).replace(/\`/g, '\\\`')}:${c.line}\` | **Category**: ${c.category}\n\n`;
+        const codeUrl = safeFindingSourceUrl(c);
+        if (codeUrl) md += `[GitHub：${findingLocationLabel(c)}](${codeUrl})\n\n`;
+        else md += '位置：本地 Diff（无可用的已提交 GitHub 行号）\n\n';
         md += `${c.whyPriority || ''}\n\n`;
         if (c.diffSnippet) {
           md += `\`\`\`diff\n${c.diffSnippet}\n\`\`\`\n\n`;
@@ -1842,13 +1887,19 @@
         es.addEventListener('tool_call', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            handleLiveToolCall(payload.name, payload.args);
+            handleLiveToolCall(payload.name, payload.args, payload.callId);
+          } catch {}
+        });
+        es.addEventListener('tool_output', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            handleLiveToolOutput(payload.callId, payload.stream, payload.chunk);
           } catch {}
         });
         es.addEventListener('tool_result', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            handleLiveToolResult(payload.name, payload.success, payload.output);
+            handleLiveToolResult(payload.name, payload.success, payload.output, payload.callId, payload);
           } catch {}
         });
       } catch (e) {
@@ -1863,7 +1914,8 @@
             mode: 'worktree',
             repoPath: activeRepoPath || undefined,
             prompt: userPrompt || undefined,
-            sessionId
+            sessionId,
+            runTests: document.getElementById('reviewRunTests')?.checked === true
           }),
         });
         const data = await res.json();
@@ -2586,7 +2638,7 @@
         if (task.comments && task.comments.length > 0) {
           diagNote.textContent = task.agentSummary?.riskNote || task.agentSummary?.message || `已复核工作区改动及 AST 分块，共发现 ${task.comments.length} 项关注建议，请参考下方审查看板。`;
         } else {
-          diagNote.textContent = `已复核本地改动及 AST 语法树。本次变更代码逻辑严密，断言完整，规约与单元测试核验均通过。`;
+          diagNote.textContent = '静态审查没有发现需要反馈的缺陷。单元测试与编译是否通过，请以本次任务的真实执行日志为准。';
         }
       }
 
@@ -2601,8 +2653,27 @@
 
       const regEl = document.getElementById('detailRegressionStatus');
       if (regEl) {
-        regEl.textContent = task.agentSummary?.regressionStatus || '本地环境就绪';
+        regEl.textContent = task.agentSummary?.regressionStatus || '测试未执行，状态未知';
       }
+      const testing = task.testing || task.projectTesting;
+      const passedEl = document.getElementById('verificationPassedTests');
+      const failedEl = document.getElementById('verificationFailedTests');
+      const verificationTest = document.getElementById('verificationTestText');
+      const verificationBuild = document.getElementById('verificationBuildText');
+      const diffStatus = document.getElementById('verificationGitDiffStatus');
+      if (passedEl) passedEl.textContent = testing?.status === 'passed'
+        ? testing.executions.reduce((sum, item) => sum + (item.observedPassed || 0), 0) + ' 通过'
+        : testing?.status === 'failed' ? '测试失败'
+        : testing?.status === 'partial' ? '测试不完整'
+        : testing?.status === 'no-tests' ? '未发现测试' : '未运行';
+      if (failedEl) failedEl.textContent = testing?.status === 'passed'
+        ? testing.executions.reduce((sum, item) => sum + (item.observedFailed || 0), 0) + ' 失败'
+        : '失败数量未验证';
+      if (verificationTest) verificationTest.title = testing?.executions.map(item =>
+        (item.project.command?.executable || '') + '：' + item.status +
+        '（exit ' + String(item.exitCode) + '）').join('\n') || '';
+      if (verificationBuild) verificationBuild.textContent = '编译：未单独执行；不能根据静态审查推断通过。';
+      if (diffStatus) diffStatus.textContent = '未执行，不能标记通过。';
 
       const bpList = document.getElementById('detailBulletPoints');
       bpList.innerHTML = '';
@@ -2715,6 +2786,58 @@
       }
     }
 
+
+    function safeFindingSourceUrl(finding) {
+      const raw = finding?.location?.sourceUrl;
+      if (typeof raw !== 'string' || !raw) return null;
+      try {
+        const url = new URL(raw);
+        if (url.protocol !== 'https:' || url.hostname !== 'github.com' ||
+          url.port || url.username || url.password ||
+          !/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/blob\/[a-f0-9]{40}\/[^?#]+$/i.test(url.pathname) ||
+          !/^#L[1-9]\d*$/.test(url.hash) || url.search) return null;
+        return url.href;
+      } catch { return null; }
+    }
+
+    function findingLocationPath(finding) {
+      return String(finding?.location?.file || finding?.file || '').replace(/\\/g, '/');
+    }
+
+    function findingLocationLabel(finding) {
+      const full = findingLocationPath(finding);
+      const line = finding?.location?.line ?? finding?.line;
+      const basename = full.split('/').pop() || '未定位文件';
+      return basename + ':' + (Number.isSafeInteger(line) && line > 0 ? line : '?');
+    }
+
+    function renderFindingLocationBadge(finding, index) {
+      const label = escapeHtml(findingLocationLabel(finding));
+      const full = escapeHtml(findingLocationPath(finding));
+      const source = safeFindingSourceUrl(finding);
+      const css = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-blue-200 ' +
+        'bg-blue-50 hover:bg-blue-100 text-blue-700 font-mono text-[11px] transition-colors';
+      const content = '<i data-lucide="file-code" class="w-3 h-3"></i><span>' + label + '</span>' +
+        (source ? '<i data-lucide="external-link" class="w-3 h-3"></i>' : '');
+      if (source) {
+        return '<a class="' + css + '" href="' + escapeHtml(source) +
+          '" target="_blank" rel="noopener noreferrer" title="GitHub：' + full +
+          '（已提交的代码行）">' + content + '</a>';
+      }
+      if (Number.isSafeInteger(index) && index >= 0) {
+        return '<button type="button" class="' + css +
+          '" onclick="openFindingDiff(' + index + ')" title="本地 Diff：' + full +
+          '（未提交的代码不会伪造 GitHub 行号）">' + content + '</button>';
+      }
+      return '<span class="' + css + '" title="' + full + '">' + content + '</span>';
+    }
+
+    function openFindingDiff(index) {
+      const finding = currentTask?.comments?.[index];
+      if (!finding) return;
+      previewRawDiffModal(findingLocationPath(finding), finding?.location?.line ?? finding.line);
+    }
+
     function renderPrioritizeAndComments(task) {
       const container = document.getElementById('detailPrioritizeSection');
       if (!container) return;
@@ -2730,11 +2853,11 @@
               </div>
               <div>
                 <div class="text-xs font-bold text-emerald-950 flex items-center gap-2">
-                  <span>代码审查通过 (All Checks Passed)</span>
+                  <span>静态审查暂未发现问题</span>
                   <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-800 font-mono font-semibold">0 Issues · Clean</span>
                 </div>
                 <div class="text-[11px] text-emerald-800/90 mt-0.5">
-                  6 大专家 Agent 并发走查与 Self-Critique 二阶批判均未发现阻断性缺陷或规则违规。
+                  仅表示当前静态审查未返回缺陷；测试、编译是否通过以执行日志为准。
                 </div>
               </div>
             </div>
@@ -2750,6 +2873,15 @@
       // Benchmark 标杆体验：干净典雅的审查问题列表 (完全还原用户截图中的标杆设计)
       const benchmarkListHtml = `
         <div class="space-y-4 pt-1 font-sans text-left">
+          <div class="border border-zinc-200 rounded-xl px-3 py-2.5 bg-zinc-50">
+            <div class="text-xs font-semibold text-zinc-800 mb-2">问题定位索引 · ${comments.length} 项</div>
+            <div class="flex flex-wrap gap-1.5">
+              ${comments.map((c, i) => renderFindingLocationBadge(c, i)).join('')}
+            </div>
+            <div class="text-[10px] text-zinc-500 mt-2">
+              已提交的改动可打开 GitHub 精确代码行；未提交的工作区改动仅定位到本地 Diff。
+            </div>
+          </div>
           <!-- PR / 提交标题 -->
           <div class="text-xs font-semibold text-zinc-900 border-b border-zinc-100 pb-2 flex items-center justify-between">
             <div class="flex items-center gap-2">
@@ -2761,18 +2893,17 @@
 
           <!-- 审查问题清单 -->
           <div class="space-y-4 pt-1">
-            ${comments.map(c => `
+            ${comments.map((c, index) => `
               <div class="space-y-1.5 text-xs text-left">
                 <div class="flex items-baseline gap-2 font-semibold text-zinc-900">
                   <span class="text-zinc-400 font-normal text-sm leading-none">•</span>
                   <span class="${c.priority === 'P0' ? 'text-red-600' : (c.priority === 'P1' ? 'text-amber-600' : 'text-blue-600')} font-bold font-mono">${c.priority || 'P1'}:</span>
                   <span class="text-zinc-900 text-xs font-bold">${escapeHtml(c.message)}</span>
+                  ${renderFindingLocationBadge(c, index)}
                 </div>
-                <div class="pl-4">
-                  <span onclick="previewRawDiffModal('${escapeHtml(c.file)}')" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-mono text-[11px] cursor-pointer transition-colors border border-zinc-200/80" title="点击查看文件 Diff">
-                    <i data-lucide="file-code" class="w-3 h-3 text-zinc-500"></i>
-                    <span>${escapeHtml(c.file)}:${c.line}</span>
-                  </span>
+                <div class="pl-4 text-[10px] text-zinc-500 font-mono">
+                  ${escapeHtml(findingLocationPath(c))}
+                  ${!safeFindingSourceUrl(c) ? ' · 本地 Diff' : ' · GitHub 提交行'}
                 </div>
                 <div class="pl-4 text-zinc-600 leading-relaxed font-sans text-xs">
                   ${escapeHtml(c.whyPriority || c.suggestion || c.message)}
@@ -2808,7 +2939,7 @@
         <div class="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 transition-colors space-y-2 text-left">
           <div class="flex items-center justify-between">
             <span class="text-[10px] font-mono px-2 py-0.5 rounded-full border ${pColor} font-semibold">${c.priority || 'P1'}</span>
-            <span class="text-[11px] font-mono text-zinc-400 truncate max-w-[180px]">${c.file}:${c.line}</span>
+            <span class="text-[11px] font-mono text-zinc-400 truncate max-w-[180px]">${escapeHtml(findingLocationLabel(c))}</span>
           </div>
           <div class="text-xs font-semibold text-zinc-100 leading-snug line-clamp-2">${c.message}</div>
           <div class="p-2 rounded-lg border ${boxColor} text-[11px] leading-relaxed">
@@ -2833,7 +2964,7 @@
         diffBlock = `
           <div class="rounded-xl overflow-hidden border border-zinc-800 bg-[#0d1117] font-mono text-[11.5px] leading-relaxed text-left">
             <div class="px-3 py-1 bg-zinc-900 border-b border-zinc-800 text-zinc-400 text-[10px] flex items-center justify-between">
-              <span>${c.file} • 第 ${c.line} 行</span>
+              <span>${escapeHtml(findingLocationPath(c))} • 第 ${Number(c.line) || '?'} 行</span>
               <span class="text-zinc-500">Unified Diff</span>
             </div>
             <pre class="p-3 text-zinc-200 overflow-x-auto whitespace-pre">${c.diffSnippet}</pre>
@@ -2863,7 +2994,7 @@
                 </div>
               </div>
             </div>
-            <span class="text-xs font-mono text-zinc-400">${c.file} L${c.line}</span>
+            ${renderFindingLocationBadge(c)}
           </div>
 
           <div>${sevBadge}</div>
@@ -3018,14 +3149,20 @@
         reactEventSource.addEventListener('tool_call', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            handleLiveToolCall(payload.name, payload.args);
+            handleLiveToolCall(payload.name, payload.args, payload.callId);
           } catch {}
         });
 
+        reactEventSource.addEventListener('tool_output', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            handleLiveToolOutput(payload.callId, payload.stream, payload.chunk);
+          } catch {}
+        });
         reactEventSource.addEventListener('tool_result', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            handleLiveToolResult(payload.name, payload.success, payload.output);
+            handleLiveToolResult(payload.name, payload.success, payload.output, payload.callId, payload);
           } catch {}
         });
 
@@ -3181,16 +3318,74 @@
       }
     });
 
-    function previewRawDiffModal(targetFilePath) {
+    function previewRawDiffModal(targetFilePath, targetLine) {
       let diffContent = currentTask?.rawDiff || '// 当前无 Diff 详细记录';
+      let matchedFile = false;
       if (targetFilePath && typeof targetFilePath === 'string' && currentTask?.rawDiff) {
-        const parts = currentTask.rawDiff.split(/(?=diff --git)/g);
-        const matched = parts.find(p => p.includes(`b/${targetFilePath}`) || p.includes(`a/${targetFilePath}`));
+        const parts = currentTask.rawDiff.split(/(?=^diff --git )/gm);
+        const matched = parts.find(part => {
+          const header = part.split('\n')[0];
+          return header.endsWith(' b/' + targetFilePath) ||
+            header.endsWith(' "b/' + targetFilePath + '"') ||
+            header.endsWith(' a/' + targetFilePath) ||
+            header.endsWith(' "a/' + targetFilePath + '"');
+        });
         if (matched) {
           diffContent = matched.trim();
+          matchedFile = true;
         }
       }
-      document.getElementById('diffModalContent').textContent = diffContent;
+
+      const container = document.getElementById('diffModalContent');
+      container.replaceChildren();
+      const lineValid = matchedFile && Number.isSafeInteger(targetLine) && targetLine > 0;
+      if (targetFilePath) {
+        const title = document.createElement('span');
+        title.className = 'block mb-3 text-blue-300 font-semibold';
+        title.textContent = targetFilePath + (lineValid ? ':' + targetLine : '') +
+          (lineValid ? ' · 定位到新版本行号' : ' · 文件 Diff');
+        container.appendChild(title);
+      }
+      if (!lineValid) {
+        container.appendChild(document.createTextNode(diffContent));
+      } else {
+        let newLine = null, highlight = null;
+        const lines = diffContent.split('\n');
+        const fragment = document.createDocumentFragment();
+        for (const text of lines) {
+          const hunk = /^@@[^+]*\+(\d+)(?:,\d+)?\s*@@/.exec(text);
+          let isTarget = false;
+          if (hunk) {
+            newLine = Number(hunk[1]);
+          } else if (newLine !== null) {
+            if (text.startsWith('+') && !text.startsWith('+++')) {
+              isTarget = newLine === targetLine;
+              newLine++;
+            } else if (text.startsWith(' ')) {
+              isTarget = newLine === targetLine;
+              newLine++;
+            }
+          }
+          const row = document.createElement('span');
+          row.className = 'block';
+          if (isTarget) {
+            row.className += ' bg-blue-700/70 text-white rounded px-1 -mx-1';
+            highlight = row;
+          }
+          row.textContent = text || ' ';
+          fragment.appendChild(row);
+        }
+        container.appendChild(fragment);
+        if (highlight) {
+          // Keep the matching line in view without rendering untrusted HTML.
+          container.scrollTop = Math.max(0, highlight.offsetTop - container.offsetTop - 80);
+        } else {
+          const notice = document.createElement('span');
+          notice.className = 'block mt-2 text-amber-300';
+          notice.textContent = '目标行未出现在当前 Diff hunk 中；请核对审查的版本和行号。';
+          container.appendChild(notice);
+        }
+      }
       document.getElementById('diffModal').classList.remove('hidden');
       lucide.createIcons();
     }
@@ -3293,62 +3488,102 @@
 
     async function runLiveVerification() {
       const btn = document.getElementById('btnRunVerification');
-      const origHtml = btn ? btn.innerHTML : '';
+      const origHtml = btn?.innerHTML || '';
       if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i><span>运行中...</span>`;
-        lucide.createIcons();
+        btn.textContent = '正在执行验证...';
       }
-
       const passedEl = document.getElementById('verificationPassedTests');
       const failedEl = document.getElementById('verificationFailedTests');
       const buildTextEl = document.getElementById('verificationBuildText');
+      const log = document.getElementById('verificationStreamingLog');
+      if (log) {
+        log.classList.remove('hidden');
+        log.textContent = '正在发现项目技术栈与测试入口...\n';
+      }
+      if (passedEl) passedEl.textContent = '测试执行中...';
+      if (failedEl) failedEl.textContent = '等待真实统计';
+      if (buildTextEl) buildTextEl.textContent = '编译等待执行...';
 
-      if (passedEl) passedEl.textContent = '跑测中...';
-
-      const editedFiles = currentTask?.editedFiles?.map(f => f.path) || [];
-
+      const append = value => {
+        if (!log) return;
+        log.textContent = (log.textContent + value).slice(-256 * 1024);
+        log.scrollTop = log.scrollHeight;
+      };
+      let sawFinish = false;
       try {
-        const [testRes, buildRes] = await Promise.allSettled([
-          fetch('/api/verification/test-run', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repoPath: activeRepoPath || undefined })
-          }).then(r => r.json()),
-          fetch('/api/verification/build-check', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoPath: activeRepoPath || undefined,
-              files: editedFiles
-            })
-          }).then(r => r.json())
-        ]);
+        const response = await fetch('/api/verification/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoPath: activeRepoPath || undefined,
+            files: currentTask?.editedFiles?.map(f => f.path) || []
+          })
+        });
+        if (!response.ok || !response.body) {
+          throw new Error('验证接口不可用（HTTP ' + response.status + '）：' +
+            (await response.text()).slice(0, 250));
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffered = '';
 
-        if (testRes.status === 'fulfilled' && testRes.value) {
-          const t = testRes.value;
-          if (passedEl) passedEl.textContent = `${t.passed ?? 262} 通过`;
-          if (failedEl) {
-            failedEl.textContent = `${t.failed ?? 0} 失败`;
-            failedEl.className = (t.failed > 0) ? 'text-red-500 font-bold' : 'text-zinc-600';
+        function handleMessage(event) {
+          if (event.type === 'discovery') {
+            append('\n[项目发现] ' + (event.projects || [])
+              .map(p => p.kind + '/' + p.directory + ' (' + p.readiness + ')').join(', ') + '\n');
+          } else if (event.type === 'tool_call') {
+            append('\n$ ' + (event.args?.command || event.name || 'command') + '\n');
+          } else if (event.type === 'tool_output') {
+            append((event.stream === 'stderr' ? '[stderr] ' : '') + (event.chunk || ''));
+          } else if (event.type === 'tool_result') {
+            append('\n[结束] ' + event.name + ': ' + event.status +
+              ', exitCode=' + String(event.exitCode ?? 'unknown') +
+              ', 耗时 ' + String(event.durationMs ?? '?') + 'ms\n');
+          } else if (event.type === 'test_summary') {
+            const result = event.testing;
+            if (!result) return;
+            const passed = result.executions.reduce((n, e) => n + (e.observedPassed || 0), 0);
+            const failed = result.executions.reduce((n, e) => n + (e.observedFailed || 0), 0);
+            if (passedEl) passedEl.textContent = result.status === 'passed'
+              ? passed + ' 通过' : '测试状态：' + result.status;
+            if (failedEl) failedEl.textContent = result.executions.length
+              ? failed + ' 已报告失败' : '无已执行的测试用例';
+          } else if (event.type === 'build_summary') {
+            if (buildTextEl) buildTextEl.textContent = event.build?.status === 'passed'
+              ? '编译通过（真实退出码 0），耗时 ' + event.build.durationMs + 'ms'
+              : '编译状态：' + (event.build?.status || 'unknown') +
+                (event.build?.note ? '；' + event.build.note : '');
+          } else if (event.type === 'error') {
+            append('\n[错误] ' + (event.message || '未知错误') + '\n');
+          } else if (event.type === 'finish') {
+            sawFinish = true;
+            append('\n验证执行结束，详情见上方 stdout/stderr 和退出码。\n');
           }
         }
 
-        if (buildRes.status === 'fulfilled' && buildRes.value) {
-          const b = buildRes.value;
-          if (buildTextEl) {
-            const summaryBadge = b.targetedSummary ? `<div class="text-[10px] text-zinc-500 font-mono mt-0.5">${escapeHtml(b.targetedSummary)}</div>` : '';
-            if (b.success) {
-              buildTextEl.innerHTML = `<div>静态编译通过：<span class="text-emerald-600 font-semibold">0 错误</span>${b.warningCount ? `，${b.warningCount} 警告` : ''}；AST 与类型就绪。</div>${summaryBadge}`;
-            } else {
-              buildTextEl.innerHTML = `<div>静态编译待修复：<strong class="text-red-600 font-semibold">${b.errorCount || 1} 错误</strong>${b.warningCount ? `，${b.warningCount} 警告` : ''}。</div>${summaryBadge}`;
-            }
+        while (true) {
+          const { value, done } = await reader.read();
+          buffered += decoder.decode(value, { stream: !done });
+          let position;
+          while ((position = buffered.indexOf('\n')) >= 0) {
+            const line = buffered.slice(0, position);
+            buffered = buffered.slice(position + 1);
+            if (!line.trim()) continue;
+            try { handleMessage(JSON.parse(line)); }
+            catch (err) { append('\n[日志解析失败] ' + String(err).slice(0, 120) + '\n'); }
           }
+          if (done) break;
         }
-
+        if (!sawFinish) {
+          append('\n[中断] 服务端没有发送完成标记，结果未确认。\n');
+          if (passedEl) passedEl.textContent = '验证中断';
+        }
         await fetchEnvironmentInfo();
       } catch (err) {
-        console.error('Verification error:', err);
+        append('\n[验证失败] ' + err.message + '\n');
+        if (passedEl) passedEl.textContent = '验证失败 / 未完成';
+        if (buildTextEl) buildTextEl.textContent = '编译未确认';
       } finally {
         if (btn) {
           btn.disabled = false;

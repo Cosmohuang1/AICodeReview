@@ -5,6 +5,7 @@ export type StreamEventType =
   | 'think'
   | 'tool_call'
   | 'tool_result'
+  | 'tool_output'
   | 'step'
   | 'finish'
   | 'abort'

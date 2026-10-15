@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { execSync, exec } from 'node:child_process';
+import { execSync, exec, execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseDiff } from '../parser/diff.parser.js';
@@ -23,7 +23,9 @@ import { defaultReactStreamer, type StreamEventType } from '../agent-engine/reac
 import os from 'node:os';
 import { PatchService } from '../services/patch.service.js';
 import { ReviewService } from '../services/review.service.js';
+import { committedDiffTarget, createFindingLocation } from '../review/finding-location.js';
 import { TestRunnerService } from '../services/test-runner.service.js';
+import { detectProjectTests, verifyProjectTests, type ProjectTestReport } from '../testing/project-tests.js';
 import { mcpManager } from '../mcp/client.js';
 import { generateMcpIdeConfig } from '../mcp/config.js';
 
@@ -101,6 +103,8 @@ export interface TaskDetail {
   comments: any[];
   chatHistory: Array<{ role: 'user' | 'agent'; text: string; time: string }>;
   rawDiff?: string;
+  testing?: ProjectTestReport;
+  reviewSource?: { commitSha: string | null; kind: 'committed' | 'working-tree' };
 }
 
 // 动态任务列表 (100% 真实数据，由真实工作区和任务运行生成，绝无硬编码假数据)
@@ -433,9 +437,129 @@ apiRouter.post('/verification/test-run', async (req: Request, res: Response) => 
     const hasPackageJson = fs.existsSync(path.join(targetCwd, 'package.json'));
     const cmd = req.body.cmd || (hasPackageJson ? 'npm test' : 'dotnet test');
     const result = await testRunnerService.runTestSuite(targetCwd, cmd);
-    res.json({ success: true, ...result });
+    res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+
+/**
+ * Streaming verification for the user's explicit "运行验证" action.
+ * Emits NDJSON as commands start, write stdout/stderr, and exit. The browser
+ * MUST NOT infer passing tests or successful compilation from this endpoint's
+ * mere HTTP 200 status.
+ */
+apiRouter.post('/verification/stream', async (req: Request, res: Response) => {
+  const cwd = req.body?.repoPath ? path.resolve(req.body.repoPath) : process.cwd();
+  if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
+    res.status(400).json({ error: 'Repository directory not found' });
+    return;
+  }
+  res.writeHead(200, {
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.flushHeaders();
+  let disconnected = false;
+  res.on('close', () => { disconnected = true; });
+  const emit = (payload: Record<string, unknown>) => {
+    if (!disconnected && !res.writableEnded) {
+      try { res.write(JSON.stringify(payload) + '\n'); } catch { disconnected = true; }
+    }
+  };
+  try {
+    const files = Array.isArray(req.body?.files)
+      ? req.body.files.filter((value: unknown): value is string => typeof value === 'string').slice(0, 100)
+      : [];
+    const detection = detectProjectTests(cwd, files);
+    emit({ type: 'discovery', projects: detection.projects.map(p => ({
+      kind: p.kind, directory: p.directory, note: p.note, readiness: p.readiness
+    })) });
+    const testing = await verifyProjectTests(cwd, detection, true, 120_000, event => {
+      const callId = 'button-test:' + event.project.kind + ':' + event.project.directory;
+      if (event.phase === 'start') {
+        emit({ type: 'tool_call', callId, name: 'test',
+          args: { command: event.command } });
+      } else if (event.phase === 'output') {
+        emit({ type: 'tool_output', callId, name: 'test',
+          stream: event.stream, chunk: event.chunk });
+      } else if (event.result) {
+        emit({ type: 'tool_result', callId, name: 'test',
+          status: event.result.status, success: event.result.status === 'passed',
+          exitCode: event.result.exitCode, durationMs: event.result.durationMs,
+          observedPassed: event.result.observedPassed,
+          observedFailed: event.result.observedFailed,
+          output: event.result.outputSnippet || event.result.reason });
+      }
+    });
+    emit({ type: 'test_summary', testing });
+
+    const solutions = fs.readdirSync(cwd).filter(name => /\.slnx?$/.test(name));
+    let target: { executable: string; args: string[] } | null = null;
+    let buildNote = '';
+    if (solutions.length === 1) {
+      target = { executable: 'dotnet',
+        args: ['build', solutions[0], '--no-restore', '--nologo'] };
+    } else if (solutions.length > 1) {
+      buildNote = 'Multiple solutions; build target is ambiguous. Choose a solution explicitly.';
+    } else if (fs.existsSync(path.join(cwd, 'package.json'))) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'));
+        if (typeof pkg.scripts?.build === 'string' && pkg.scripts.build.trim()) {
+          target = { executable: 'npm', args: ['run', 'build'] };
+        } else buildNote = 'No package.json build script is configured.';
+      } catch { buildNote = 'Invalid package.json; build skipped.'; }
+    } else {
+      buildNote = 'No supported build target detected at repository root.';
+    }
+
+    if (!target) {
+      emit({ type: 'build_summary', build: { status: 'skipped', note: buildNote } });
+    } else {
+      const command = [target.executable, ...target.args].join(' ');
+      const callId = 'button-build';
+      const start = Date.now();
+      emit({ type: 'tool_call', callId, name: 'build', args: { command } });
+      await new Promise<void>(resolve => {
+        const child = execFile(target.executable, target.args, {
+          cwd, shell: false, timeout: 120_000, maxBuffer: 2 * 1024 * 1024,
+          windowsHide: true
+        }, (error, stdout, stderr) => {
+          const exitCode = error && typeof error.code === 'number' ? error.code :
+            error ? null : 0;
+          const blocked = Boolean(error && (error.killed ||
+            error.code === 'ENOENT' || error.code === 'EACCES' ||
+            /NETSDK1004|assets\.json.*not found|could not find/.test(String(stderr))));
+          const status = blocked ? 'blocked' : exitCode === 0 ? 'passed' : 'failed';
+          const output = (String(stdout || '') + '\n' + String(stderr || '')).trim();
+          const result = { status, exitCode, durationMs: Date.now() - start,
+            note: status === 'passed' ? 'Build command exited 0' :
+              blocked ? 'Build environment unavailable or timed out' : 'Build failed',
+            outputSnippet: output.slice(-4000) };
+          emit({ type: 'tool_result', callId, name: 'build',
+            success: status === 'passed', ...result, output: result.outputSnippet || result.note });
+          emit({ type: 'build_summary', build: result });
+          resolve();
+        });
+        let sent = 0;
+        for (const stream of ['stdout', 'stderr'] as const) {
+          child[stream]?.on('data', (buffer: Buffer | string) => {
+            const chunk = String(buffer);
+            if (sent >= 256 * 1024) return;
+            const piece = chunk.slice(0, 256 * 1024 - sent);
+            sent += piece.length;
+            emit({ type: 'tool_output', callId, name: 'build', stream, chunk: piece });
+          });
+        }
+      });
+    }
+    emit({ type: 'finish', message: 'Real command execution finished.' });
+  } catch (error) {
+    emit({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+  } finally {
+    if (!res.writableEnded) res.end();
   }
 });
 
@@ -774,7 +898,8 @@ apiRouter.post('/agent/react/run', async (req: Request, res: Response) => {
       author: '本地开发者 (ReAct Agent)',
       workedTime: result.workedTime,
       timestamp: result.timestamp,
-      status: result.aborted ? 'failed' : 'changes_ready',
+      status: result.aborted || !result.success ? 'needs_attention' : 'changes_ready',
+      testing: result.projectTesting,
       agentSummary: {
         commit: result.commitHash,
         bulletPoints: result.bulletPoints,
@@ -797,6 +922,7 @@ apiRouter.post('/agent/react/run', async (req: Request, res: Response) => {
     };
     tasksList.unshift(newTaskItem);
     defaultSqliteStorage.saveTask(newTaskItem);
+    defaultReactStreamer.broadcast(sessionId, 'finish', { text: result.message });
   }).catch(err => {
     defaultReactStreamer.broadcast(sessionId, 'error', { error: err.message });
   });
@@ -1040,7 +1166,8 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     return res.status(400).json({ error: `指定仓库路径不存在: ${targetCwd}` });
   }
 
-  const isReviewIntent = !prompt || /(?:review|审查|走查|检查|看下代码|帮我看|找bug|分析代码|评阅)/i.test(prompt);
+  const isReviewIntent = !prompt ||
+    /(?:review|审查|走查|检查|看下代码|帮我看|找bug|分析代码|评阅|测试了(?:吗|嘛)|测过了吗|跑过测试|是否(?:已经)?跑(?:过)?测试|有(?:没有|没)跑测试|测试结果|测试报告|测试情况|回归验证|验证过了吗)/i.test(prompt);
 
   // 1. 只有当用户明确输入了具体编码/修改需求指令时，才触发真实 Coding Agent 循环（写盘 + 跑测 + 提交）
   if (prompt && prompt.trim().length > 0 && !isReviewIntent) {
@@ -1107,6 +1234,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     broadcast('step', { step: 1, name: 'Diff 扫描与解析' });
 
     let rawDiff = '';
+    let usedLastFallback = false;
     try {
       rawDiff = execSync(cmd, { cwd: targetCwd, maxBuffer: 10 * 1024 * 1024 }).toString('utf-8');
     } catch {
@@ -1119,6 +1247,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
         const headCommit = execSync('git rev-parse --short HEAD', { cwd: targetCwd, encoding: 'utf-8' }).trim();
         if (headCommit) {
           cmd = 'git show HEAD';
+          usedLastFallback = true;
           desc = `工作区无未提交改动，已自动切换走查最新提交 (${headCommit})`;
           broadcast('think', { text: `当前工作区干净（无未提交修改），自动切换走查最近提交 commit: ${headCommit}...` });
           rawDiff = execSync(cmd, { cwd: targetCwd, maxBuffer: 10 * 1024 * 1024 }).toString('utf-8');
@@ -1193,18 +1322,83 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
 
     const { summary, comments: enrichedComments, chunks, analyzedFiles: topDeepFiles } = reviewResult;
 
+    // Only committed diff targets can safely link to a GitHub blob at a
+    // precise line. Worktree and index edits may not exist on GitHub yet.
+    const sourceTarget = committedDiffTarget(mode, from, to, usedLastFallback);
+    let sourceCommit: string | null = null;
+    let sourceRemote: string | null = null;
+    if (sourceTarget) {
+      try {
+        const sha = execFileSync('git',
+          ['rev-parse', '--verify', '--end-of-options', sourceTarget + '^{commit}'],
+          { cwd: targetCwd, encoding: 'utf8', timeout: 10000 }).trim();
+        if (/^[a-f0-9]{40}$/i.test(sha)) sourceCommit = sha;
+      } catch { /* no resolved commit: do not fabricate source links */ }
+      try {
+        sourceRemote = execFileSync('git', ['remote', 'get-url', 'origin'],
+          { cwd: targetCwd, encoding: 'utf8', timeout: 10000 }).trim();
+      } catch { /* local repo is still supported without a GitHub remote */ }
+    }
+    const deletedPaths = new Set(parsedFiles.filter(f => f.isDeleted).map(f => f.filePath));
+    const locatedComments = enrichedComments.map(comment => ({
+      ...comment,
+      location: createFindingLocation(comment.file, comment.line, {
+        remote: sourceRemote,
+        commitSha: sourceCommit,
+        deleted: deletedPaths.has(comment.file)
+      })
+    }));
+
+    // Static review does not imply that any test was run.
+    const testDiscovery = detectProjectTests(targetCwd, parsedFiles.map(f => f.filePath));
+    const testing = await verifyProjectTests(
+      targetCwd, testDiscovery, req.body.runTests === true, 90_000,
+      event => {
+        const callId = 'review-test:' + event.project.kind + ':' + event.project.directory;
+        if (event.phase === 'start') {
+          broadcast('tool_call', { callId, name: 'project-test',
+            args: { command: event.command } });
+        } else if (event.phase === 'output') {
+          broadcast('tool_output', { callId, name: 'project-test',
+            stream: event.stream, chunk: event.chunk });
+        } else if (event.result) {
+          broadcast('tool_result', { callId, name: 'project-test',
+            success: event.result.status === 'passed',
+            status: event.result.status,
+            exitCode: event.result.exitCode,
+            durationMs: event.result.durationMs,
+            observedPassed: event.result.observedPassed,
+            observedFailed: event.result.observedFailed,
+            output: event.result.outputSnippet || event.result.reason });
+        }
+      }
+    );
+    const testState = testing.status === 'not-run'
+      ? '未运行（用户尚未授权执行项目测试）'
+      : testing.status === 'no-tests'
+        ? '未发现可运行测试'
+        : testing.status === 'passed'
+          ? '真实测试通过'
+          : testing.status === 'failed' ? '真实测试失败' : '测试不完整 / 缺少运行环境或可验证结果';
     broadcast('finish', {
-      text: `代码审查分析圆满完成！共分析 ${editedFilesList.length} 个变更文件，产出 ${enrichedComments.length} 处经过二阶核验的高质量批注。`
+      text: '静态审查完成；自动识别 ' + testDiscovery.projects.length +
+        ' 个项目测试目标。测试状态：' + testState
     });
 
     const bulletList: string[] = [];
-    if (enrichedComments.length > 0) {
-      bulletList.push(`发现并分析了 ${enrichedComments.length} 处潜在逻辑异常与安全性问题。`);
+    if (locatedComments.length > 0) {
+      bulletList.push(`发现并分析了 ${locatedComments.length} 处潜在逻辑异常与安全性问题。`);
+      // This index is derived from anchored findings, not generated prose.
+      for (const finding of locatedComments.slice(0, 10)) {
+        bulletList.push(`[${finding.priority}] ${finding.file}:${finding.line} — ${finding.message.replace(/\s+/g, ' ').slice(0, 150)}`);
+      }
+      if (locatedComments.length > 10) bulletList.push(`其他 ${locatedComments.length - 10} 项见审查问题列表。`);
     } else {
       bulletList.push('完成代码规范与单元测试边界审查，未发现逻辑缺陷。');
     }
     bulletList.push(`代码变更涵盖 ${editedFilesList.length} 个核心文件 (+${totalAdds} -${totalDels})。`);
     bulletList.push(`当前分支: ${workspaceStatus.currentBranch}，最新提交: ${workspaceStatus.lastCommit.hash || 'HEAD'}。`);
+    bulletList.push(`项目识别：${testDiscovery.projects.map(p => p.kind + ':' + p.directory).join(', ') || '无测试清单'}；测试：${testState}。`);
 
     const newTaskItem: TaskDetail = {
       id: `rev_${Date.now()}`,
@@ -1215,7 +1409,9 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
       author: workspaceStatus.lastCommit.author || process.env.GIT_AUTHOR_NAME || 'Developer',
       workedTime: '刚刚完成',
       timestamp: '刚刚',
-      status: 'changes_ready',
+      status: testing.status === 'failed' ? 'needs_attention' : 'changes_ready',
+      testing,
+      reviewSource: { commitSha: sourceCommit, kind: sourceCommit ? 'committed' : 'working-tree' },
       agentSummary: {
         commit: workspaceStatus.lastCommit.hash || 'HEAD',
         bulletPoints: bulletList,
@@ -1224,13 +1420,13 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
         walkthrough: summary.walkthrough,
         assessments: summary.assessments,
         mermaidDiagram: summary.mermaidDiagram,
-        riskNote: '已完成真实代码库静态分析与二阶过滤审查。',
-        regressionStatus: '本地审查完成',
+        riskNote: '已完成静态分析；测试执行状态以原始测试日志为准，未运行测试不代表代码已通过验证。',
+        regressionStatus: testState,
         thoughtProcess: `1. 提取 Diff：执行 \`${cmd}\` 扫描工作区变更，捕获 ${parsedFiles.length} 个文件的语法结构；\n` +
           `2. 智能剪枝：自动过滤样板与生成代码，提取 Top ${topDeepFiles.length} 个核心高危文件进行 AST 分块；\n` +
           `3. 审查并发执行：调度 6 个专家 Agent（Bug、Security、Performance、Style、Test、Custom）进行深度走查；\n` +
           `4. 二阶批判降噪：启动 Self-Critique 机制核验上下文有效性，滤除误报；\n` +
-          `5. 生成审查总结：输出结构化走查清单与风险说明。`,
+          `5. 生成审查总结：输出结构化走查清单与风险说明；\\n6. 项目测试：${testState}。`,
         conclusionHeading: summary.conclusionHeading || (enrichedComments.length > 0 ? `已复查最新提交，仍有 ${enrichedComments.length} 项问题需要处理。` : '已复查最新提交，未发现代码缺陷。'),
         message: summary.conclusionHeading || (enrichedComments.length > 0 ? `已复查最新提交，仍有 ${enrichedComments.length} 项问题需要处理。` : '已复查最新提交，未发现代码缺陷。'),
         steps: [
@@ -1261,10 +1457,29 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
                 output: `已完成 ${chunks.length} 个代码分块审查，经过二阶过滤得到 ${enrichedComments.length} 项有效批注`
               },
               {
-                command: 'git diff --check',
-                output: '✓ git diff --check: 工作区源码规范完整'
+                command: 'git diff --check (not executed)',
+                output: '此处只执行了静态审查，未实际运行 git diff --check。'
               }
             ]
+          },
+          {
+            title: '项目类型识别与真实测试执行',
+            message: testState,
+            commands: testing.executions.length
+              ? testing.executions.map(execution => ({
+                  command: [execution.project.command?.executable,
+                    ...(execution.project.command?.args || [])].filter(Boolean).join(' '),
+                  output: execution.reason + '\n' +
+                    'status=' + execution.status + ', exit=' + String(execution.exitCode) +
+                    ', observedPassed=' + String(execution.observedPassed) + '\n' +
+                    execution.outputSnippet.slice(-2200)
+                }))
+              : testDiscovery.projects.map(project => ({
+                  command: project.command
+                    ? [project.command.executable, ...project.command.args].join(' ')
+                    : '(No executable test target)',
+                  output: project.note + ' - ' + testState
+                }))
           },
           {
             title: 'Self-Critique 二阶核验与结论汇总',
@@ -1281,7 +1496,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
       totalAdditions: totalAdds,
       totalDeletions: totalDels,
       editedFiles: editedFilesList,
-      comments: enrichedComments,
+      comments: locatedComments,
       chatHistory: [],
       rawDiff: rawDiff || '// 当前工作区未检测到改动'
     };
