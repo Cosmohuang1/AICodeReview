@@ -1320,7 +1320,28 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
 
     // Static review does not imply that any test was run.
     const testDiscovery = detectProjectTests(targetCwd, parsedFiles.map(f => f.filePath));
-    const testing = await verifyProjectTests(targetCwd, testDiscovery, req.body.runTests === true);
+    const testing = await verifyProjectTests(
+      targetCwd, testDiscovery, req.body.runTests === true, 90_000,
+      event => {
+        const callId = 'review-test:' + event.project.kind + ':' + event.project.directory;
+        if (event.phase === 'start') {
+          broadcast('tool_call', { callId, name: 'project-test',
+            args: { command: event.command } });
+        } else if (event.phase === 'output') {
+          broadcast('tool_output', { callId, name: 'project-test',
+            stream: event.stream, chunk: event.chunk });
+        } else if (event.result) {
+          broadcast('tool_result', { callId, name: 'project-test',
+            success: event.result.status === 'passed',
+            status: event.result.status,
+            exitCode: event.result.exitCode,
+            durationMs: event.result.durationMs,
+            observedPassed: event.result.observedPassed,
+            observedFailed: event.result.observedFailed,
+            output: event.result.outputSnippet || event.result.reason });
+        }
+      }
+    );
     const testState = testing.status === 'not-run'
       ? '未运行（用户尚未授权执行项目测试）'
       : testing.status === 'no-tests'

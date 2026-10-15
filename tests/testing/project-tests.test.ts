@@ -22,6 +22,44 @@ afterEach(() => {
 });
 
 describe('multi-language project test discovery', () => {
+  it('extracts real dotnet failure counts without reversing pass/fail', async () => {
+    const root = temp();
+    root.put('Tests.csproj', '<Project><IsTestProject>true</IsTestProject></Project>');
+    const detection = detectProjectTests(root.cwd);
+    expect(detection.projects.some(p => p.kind === 'dotnet')).toBe(true);
+    // A deterministic stub emits the canonical dotnet test summary and fails.
+    const project = detection.projects.find(p => p.kind === 'dotnet')!;
+    project.command = {
+      executable: process.execPath,
+      args: ['-e', 'console.log("Failed! - Failed: 2, Passed: 7, Skipped: 1, Total: 10"); process.exit(1)']
+    };
+    const report = await verifyProjectTests(root.cwd, detection, true);
+    expect(report.status).toBe('failed');
+    expect(report.executions[0].observedPassed).toBe(7);
+    expect(report.executions[0].observedFailed).toBe(2);
+    expect(report.executions[0].exitCode).toBe(1);
+  }, 20000);
+
+  it('streams real output while a test process is still executing', async () => {
+    const root = temp();
+    root.put('package.json', JSON.stringify({ scripts: { test: 'node -e "console.log(\'Tests  1 passed (1)\')"' } }));
+    const found = detectProjectTests(root.cwd);
+    const project = found.projects[0];
+    project.command = {
+      executable: process.execPath,
+      args: ['-e', 'console.log("phase-one"); setTimeout(() => { console.error("phase-two"); console.log("Tests  1 passed (1)"); }, 100)']
+    };
+    const events: Array<{ phase: string; stream?: string; chunk?: string }> = [];
+    const result = await verifyProjectTests(root.cwd, found, true, 5000,
+      event => events.push({ phase: event.phase, stream: event.stream, chunk: event.chunk }));
+    expect(result.status).toBe('passed');
+    expect(events[0].phase).toBe('start');
+    expect(events.some(e => e.phase === 'output' && e.chunk?.includes('phase-one'))).toBe(true);
+    expect(events.some(e => e.phase === 'output' && e.stream === 'stderr' &&
+      e.chunk?.includes('phase-two'))).toBe(true);
+    expect(events[events.length - 1].phase).toBe('finish');
+  }, 10000);
+
   it('detects Node, Java, .NET and Python by manifests without executing commands', () => {
     const root = temp();
     root.put('frontend/package.json', JSON.stringify({ scripts: { test: 'vitest run' } }));

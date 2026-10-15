@@ -219,8 +219,15 @@ function getCounts(output: string): { passed: number | null; failed: number | nu
   }
   const pytest = output.match(/(\d+)\s+passed(?:\s*,\s*(\d+)\s+failed)?/i);
   if (pytest) return { passed: Number(pytest[1]), failed: Number(pytest[2] || 0) };
-  const dotnet = output.match(/Passed:\s*(\d+)(?:\s*,\s*Failed:\s*(\d+))?/i);
-  if (dotnet) return { passed: Number(dotnet[1]), failed: Number(dotnet[2] || 0) };
+  // dotnet test reports "Failed: 1, Passed: 7, Skipped: 0" in that
+  // order, so read both counters independently. A failing command may
+  // report a nonzero exit code even if only some test counts are present.
+  const dotnetPassed = output.match(/\bPassed:\s*(\d+)/i);
+  const dotnetFailed = output.match(/\bFailed:\s*(\d+)/i);
+  if (dotnetPassed || dotnetFailed) return {
+    passed: dotnetPassed ? Number(dotnetPassed[1]) : 0,
+    failed: dotnetFailed ? Number(dotnetFailed[1]) : 0
+  };
   const maven = output.match(/Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+)/i);
   if (maven) return {
     passed: Math.max(0, Number(maven[1]) - Number(maven[2]) - Number(maven[3])),
