@@ -43,7 +43,7 @@ browserDescribe('complete local CLI browser-only flow', () => {
   it('runs real Chromium from CLI and writes JSON, Markdown, HTML and plan', async () => {
     const output = join(cwd, 'review.md');
     const child = spawn(process.execPath, [
-      '--import', import.meta.resolve('tsx'), resolve(appRoot, 'src/cli.ts'),
+      resolve(appRoot, 'node_modules/tsx/dist/cli.mjs'), resolve(appRoot, 'src/cli.ts'),
       'review', '--browser-only', '--url', baseURL, '-o', output
     ], {
       cwd, stdio: ['ignore', 'pipe', 'pipe'],

@@ -28,9 +28,19 @@ browserDescribe('managed server and dedicated Chrome CDP providers', () => {
     localURL = 'http://127.0.0.1:' + address.port;
   });
   afterAll(async () => {
-    chromeProcesses.forEach(p => { try { p.kill('SIGTERM'); } catch {} });
+    for (const child of chromeProcesses) {
+      if (child.exitCode === null) {
+        const closed = new Promise<void>(resolve => {
+          child.once('close', () => resolve());
+          setTimeout(resolve, 3500).unref();
+        });
+        try { child.kill('SIGTERM'); } catch {}
+        await closed;
+      }
+    }
     if (localApp) await new Promise<void>(resolve => localApp.close(() => resolve()));
-    rmSync(folder, { recursive: true, force: true });
+    try { rmSync(folder, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+    catch { /* Chrome may release an ephemeral profile after test process exits */ }
   });
 
   it('requires explicit consent before managed server startup', async () => {
