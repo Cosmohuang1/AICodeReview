@@ -248,3 +248,20 @@ Test outcomes: \`passed\` requires exit code 0 **and observed test passes in out
 No dependency install/restore, remote fetch, machine-wide environment changes or automatic source edits are performed by the test detector. Maven/Gradle run offline and .NET uses \`--no-restore\` to avoid implicit downloads; in a fresh environment, prepare dependencies first. User-supplied test scripts are still arbitrary project code: only run them in an approved, disposable testing environment with test credentials and test databases.
 
 This is manifest-level and test-runner-level discovery. It does not claim full test coverage or successful verification of any specific code change merely because some tests passed.
+
+## Precise review finding locations
+
+In the main AICodeReview workspace, each anchored finding shows a CodeRabbit-style
+`FileName.ext:line` badge, with the full repository-relative path in its tooltip
+and issue details. The finding index is derived from actual anchored file and
+new-side line values, not from free-form AI summary text.
+
+- For `last` and explicit `branch` (`base...target`) comparisons, a resolvable GitHub
+  `origin` and target commit yield a permanent GitHub blob URL with `#L25`.
+- For working-tree or partially staged changes, no link to potentially stale GitHub
+  HEAD lines is emitted. Click the badge to open the local diff, where the
+  reviewed line is highlighted when it appears in the diff hunk.
+- Deleted files, invalid file paths/line numbers, unsupported remotes, and
+  unresolved commits never produce fabricated GitHub line links.
+- Downloaded Markdown reports include per-finding GitHub links where possible.
+- Renamed files use the new-side path and line derived from the diff.

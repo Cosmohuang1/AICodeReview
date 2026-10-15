@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { execSync, exec, execFile } from 'node:child_process';
+import { execSync, exec, execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseDiff } from '../parser/diff.parser.js';
@@ -23,6 +23,7 @@ import { defaultReactStreamer, type StreamEventType } from '../agent-engine/reac
 import os from 'node:os';
 import { PatchService } from '../services/patch.service.js';
 import { ReviewService } from '../services/review.service.js';
+import { committedDiffTarget, createFindingLocation } from '../review/finding-location.js';
 import { TestRunnerService } from '../services/test-runner.service.js';
 import { detectProjectTests, verifyProjectTests, type ProjectTestReport } from '../testing/project-tests.js';
 import { mcpManager } from '../mcp/client.js';
@@ -103,6 +104,7 @@ export interface TaskDetail {
   chatHistory: Array<{ role: 'user' | 'agent'; text: string; time: string }>;
   rawDiff?: string;
   testing?: ProjectTestReport;
+  reviewSource?: { commitSha: string | null; kind: 'committed' | 'working-tree' };
 }
 
 // 动态任务列表 (100% 真实数据，由真实工作区和任务运行生成，绝无硬编码假数据)
@@ -1232,6 +1234,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     broadcast('step', { step: 1, name: 'Diff 扫描与解析' });
 
     let rawDiff = '';
+    let usedLastFallback = false;
     try {
       rawDiff = execSync(cmd, { cwd: targetCwd, maxBuffer: 10 * 1024 * 1024 }).toString('utf-8');
     } catch {
@@ -1244,6 +1247,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
         const headCommit = execSync('git rev-parse --short HEAD', { cwd: targetCwd, encoding: 'utf-8' }).trim();
         if (headCommit) {
           cmd = 'git show HEAD';
+          usedLastFallback = true;
           desc = `工作区无未提交改动，已自动切换走查最新提交 (${headCommit})`;
           broadcast('think', { text: `当前工作区干净（无未提交修改），自动切换走查最近提交 commit: ${headCommit}...` });
           rawDiff = execSync(cmd, { cwd: targetCwd, maxBuffer: 10 * 1024 * 1024 }).toString('utf-8');
@@ -1318,6 +1322,33 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
 
     const { summary, comments: enrichedComments, chunks, analyzedFiles: topDeepFiles } = reviewResult;
 
+    // Only committed diff targets can safely link to a GitHub blob at a
+    // precise line. Worktree and index edits may not exist on GitHub yet.
+    const sourceTarget = committedDiffTarget(mode, from, to, usedLastFallback);
+    let sourceCommit: string | null = null;
+    let sourceRemote: string | null = null;
+    if (sourceTarget) {
+      try {
+        const sha = execFileSync('git',
+          ['rev-parse', '--verify', '--end-of-options', sourceTarget + '^{commit}'],
+          { cwd: targetCwd, encoding: 'utf8', timeout: 10000 }).trim();
+        if (/^[a-f0-9]{40}$/i.test(sha)) sourceCommit = sha;
+      } catch { /* no resolved commit: do not fabricate source links */ }
+      try {
+        sourceRemote = execFileSync('git', ['remote', 'get-url', 'origin'],
+          { cwd: targetCwd, encoding: 'utf8', timeout: 10000 }).trim();
+      } catch { /* local repo is still supported without a GitHub remote */ }
+    }
+    const deletedPaths = new Set(parsedFiles.filter(f => f.isDeleted).map(f => f.filePath));
+    const locatedComments = enrichedComments.map(comment => ({
+      ...comment,
+      location: createFindingLocation(comment.file, comment.line, {
+        remote: sourceRemote,
+        commitSha: sourceCommit,
+        deleted: deletedPaths.has(comment.file)
+      })
+    }));
+
     // Static review does not imply that any test was run.
     const testDiscovery = detectProjectTests(targetCwd, parsedFiles.map(f => f.filePath));
     const testing = await verifyProjectTests(
@@ -1355,8 +1386,13 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     });
 
     const bulletList: string[] = [];
-    if (enrichedComments.length > 0) {
-      bulletList.push(`发现并分析了 ${enrichedComments.length} 处潜在逻辑异常与安全性问题。`);
+    if (locatedComments.length > 0) {
+      bulletList.push(`发现并分析了 ${locatedComments.length} 处潜在逻辑异常与安全性问题。`);
+      // This index is derived from anchored findings, not generated prose.
+      for (const finding of locatedComments.slice(0, 10)) {
+        bulletList.push(`[${finding.priority}] ${finding.file}:${finding.line} — ${finding.message.replace(/\s+/g, ' ').slice(0, 150)}`);
+      }
+      if (locatedComments.length > 10) bulletList.push(`其他 ${locatedComments.length - 10} 项见审查问题列表。`);
     } else {
       bulletList.push('完成代码规范与单元测试边界审查，未发现逻辑缺陷。');
     }
@@ -1375,6 +1411,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
       timestamp: '刚刚',
       status: testing.status === 'failed' ? 'needs_attention' : 'changes_ready',
       testing,
+      reviewSource: { commitSha: sourceCommit, kind: sourceCommit ? 'committed' : 'working-tree' },
       agentSummary: {
         commit: workspaceStatus.lastCommit.hash || 'HEAD',
         bulletPoints: bulletList,
@@ -1459,7 +1496,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
       totalAdditions: totalAdds,
       totalDeletions: totalDels,
       editedFiles: editedFilesList,
-      comments: enrichedComments,
+      comments: locatedComments,
       chatHistory: [],
       rawDiff: rawDiff || '// 当前工作区未检测到改动'
     };
