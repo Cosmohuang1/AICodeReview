@@ -180,3 +180,16 @@ requirement or automatically committed. Smoke-only scenarios and click/fill
 actions are skipped to prevent accidental side effects or credential leakage.
 Install @playwright/test in the destination project before running/promoting
 these files, and verify generated selectors/expectations with a developer.
+
+
+## Interactive actions and safety
+
+Configured click/fill actions are NOT executed by default. To allow them with
+explicit local CLI consent, pass --approve-interactions. Treat this permission
+as potentially destructive even when the target is localhost: a local app can
+still contact a production database or remote API.
+
+    npm run review -- review --browser --approve-interactions
+
+Web mode always rejects click/fill regardless of this flag. AI-proposed actions
+remain read-only and cannot request this permission.

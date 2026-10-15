@@ -23,6 +23,9 @@ jobs:
       - name: Type Check
         run: npx tsc --noEmit
 
+      - name: Build CLI and Server
+        run: npm run build
+
       - name: Run Vitest Suite
         run: npm test
 
