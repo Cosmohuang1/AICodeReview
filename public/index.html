@@ -596,23 +596,23 @@
           <div class="text-[11px] text-zinc-600 space-y-1.5 leading-normal">
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span id="verificationTestText">针对性仓库测试：<strong id="verificationPassedTests" class="text-emerald-600 font-semibold">262 通过</strong>，<span id="verificationFailedTests">0 失败</span>，0 跳过；包含全量套件验证。</span>
+              <span id="verificationTestText">自动化测试：<strong id="verificationPassedTests" class="text-zinc-600 font-semibold">未运行</strong>，<span id="verificationFailedTests">通过/失败数量未知</span>。</span>
             </div>
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span id="verificationBuildText">静态编译与代码语法树（AST）扫描就绪。</span>
+              <span id="verificationBuildText">静态编译：尚未执行。</span>
             </div>
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span>多 Agent 并发走查：6 大专家 Agent 深度核验通过。</span>
+              <span>多 Agent 静态审查：以本次实际执行日志为准。</span>
             </div>
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span>二阶批判自愈降噪：Self-Critique 过滤误报通过。</span>
+              <span>Self-Critique：是否完成以本次任务记录为准。</span>
             </div>
             <div class="flex items-start gap-1.5">
               <span class="text-zinc-400">•</span>
-              <span class="font-mono text-zinc-700">git diff --check</span> <span id="verificationGitDiffStatus">通过，工作区源代码完整。</span>
+              <span class="font-mono text-zinc-700">git diff --check</span> <span id="verificationGitDiffStatus">尚未执行。</span>
             </div>
           </div>
           <pre id="verificationStreamingLog" class="hidden mt-2 p-2 rounded-lg bg-zinc-950 text-zinc-200 text-[10px] font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto" aria-live="polite"></pre>
@@ -1583,7 +1583,7 @@
       lucide.createIcons();
     }
 
-    function renderSingleCommandRow(cmdId, isSuccess, cmdText, output, isRunning = false) {
+    function renderSingleCommandRow(cmdId, isSuccess, cmdText, output, isRunning = false, exitCode, durationMs) {
       let statusIcon;
       let textClass = 'text-zinc-700';
       let displayCmd = cmdText;
@@ -1600,6 +1600,12 @@
         displayCmd = cmdText.startsWith('Command did not finish') ? cmdText : `Command did not finish: ${cmdText}`;
       }
 
+      if (!isRunning && exitCode !== undefined && exitCode !== null) {
+        displayCmd += ' [exit ' + exitCode + (durationMs !== undefined ? ', ' + durationMs + 'ms' : '') + ']';
+      }
+      const outputText = output || (isRunning
+        ? '// 程序运行中，等待 stdout/stderr 输出...'
+        : '// 命令已结束但没有 stdout/stderr；请核对退出码与测试统计');
       return `
         <div class="border-t border-zinc-100 first:border-t-0">
           <div class="px-3.5 py-2 flex items-center justify-between cursor-pointer hover:bg-zinc-50 transition-colors select-none group" onclick="toggleSingleCommandOutput('${cmdId}')">
@@ -1610,7 +1616,7 @@
             <i data-lucide="chevron-down" id="chev_${cmdId}" class="w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-600 shrink-0 transition-transform"></i>
           </div>
           <div id="out_${cmdId}" class="hidden p-3 bg-zinc-950 text-zinc-200 font-mono text-[11px] max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed border-t border-zinc-800">
-            ${output ? escapeHtml(output) : '// 执行完成，无标准输出'}
+            ${escapeHtml(outputText)}
           </div>
         </div>
       `;
@@ -1628,7 +1634,7 @@
             <i data-lucide="chevron-up" id="chev_${groupId}" class="w-3.5 h-3.5 text-zinc-400 transition-transform ${isExpanded ? '' : 'rotate-180'}"></i>
           </div>
           <div id="content_${groupId}" class="${isExpanded ? '' : 'hidden'} border-t border-zinc-100 divide-y divide-zinc-100">
-            ${commands.map((c, i) => renderSingleCommandRow(`${groupId}_cmd_${i}`, c.success !== false, c.command || c.name || 'cmd', c.output, c.running)).join('')}
+            ${commands.map((c, i) => renderSingleCommandRow(`${groupId}_cmd_${i}`, c.success !== false, c.command || c.name || 'cmd', c.output, c.running, c.exitCode, c.durationMs)).join('')}
           </div>
         </div>
       `;
@@ -1637,7 +1643,7 @@
     function renderRanCommandsContent(commands, containerId = 'ranCommandsContent') {
       const container = document.getElementById(containerId);
       if (!container) return;
-      container.innerHTML = commands.map((c, i) => renderSingleCommandRow(`${containerId}_cmd_${i}`, c.success !== false, c.command || c.name || 'cmd', c.output, c.running)).join('');
+      container.innerHTML = commands.map((c, i) => renderSingleCommandRow(`${containerId}_cmd_${i}`, c.success !== false, c.command || c.name || 'cmd', c.output, c.running, c.exitCode, c.durationMs)).join('');
       lucide.createIcons();
     }
 
@@ -1707,47 +1713,77 @@
       if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
     }
 
-    function handleLiveToolCall(toolName, args) {
+    // Match streamed output and completion by tool-call ID, not by "last row".
+    // This keeps stdout/stderr attributed correctly even with concurrent events.
+    function findLiveTool(callId) {
+      for (const group of liveCommandGroups) {
+        const index = group.commands.findIndex(c => c.callId === callId);
+        if (index >= 0) return { group, command: group.commands[index], index };
+      }
+      return null;
+    }
+
+    function handleLiveToolCall(toolName, args, callId) {
       const stream = document.getElementById('liveStreamItems');
       if (!stream) return;
+      if (callId && findLiveTool(callId)) return;
 
       if (!currentLiveGroupId) {
         const groupId = 'group_' + Date.now();
         currentLiveGroupId = groupId;
         liveCommandGroups.push({ id: groupId, commands: [] });
-
         const groupDiv = document.createElement('div');
         groupDiv.id = 'container_' + groupId;
-        groupDiv.innerHTML = renderCommandGroupHtml(groupId, 'Ran 1 command', [], true, true);
+        groupDiv.innerHTML = renderCommandGroupHtml(groupId, 'Commands', [], true, true);
         stream.appendChild(groupDiv);
       }
 
-      const currentGroup = liveCommandGroups.find(g => g.id === currentLiveGroupId);
-      if (currentGroup) {
-        const cmdStr = (args && args.command) ? args.command : (args && args.query ? `rg "${args.query}"` : toolName);
-        currentGroup.commands.push({
-          command: cmdStr,
-          name: toolName,
-          output: '',
-          running: true,
-          success: true
-        });
-        updateLiveCommandGroupUI(currentGroup);
+      const group = liveCommandGroups.find(g => g.id === currentLiveGroupId);
+      if (!group) return;
+      const cmdStr = args?.command || (args?.query ? 'search: ' + args.query : toolName);
+      group.commands.push({
+        callId: callId || ('legacy_' + group.commands.length),
+        command: cmdStr, name: toolName,
+        output: '', running: true, success: null,
+        exitCode: null, durationMs: null
+      });
+      updateLiveCommandGroupUI(group);
+    }
+
+    function handleLiveToolOutput(callId, stream, chunk) {
+      const found = findLiveTool(callId);
+      if (!found || typeof chunk !== 'string') return;
+      const prefix = stream === 'stderr' ? '[stderr] ' : '';
+      found.command.output = (found.command.output + prefix + chunk).slice(-256 * 1024);
+      const outputEl = document.getElementById('out_' + found.group.id + '_cmd_' + found.index);
+      if (outputEl) {
+        // textContent is intentional: compiler output is untrusted text, never HTML.
+        outputEl.textContent = found.command.output;
+        outputEl.scrollTop = outputEl.scrollHeight;
+        outputEl.classList.remove('hidden');
       }
     }
 
-    function handleLiveToolResult(toolName, success, output) {
-      if (!currentLiveGroupId) return;
-      const currentGroup = liveCommandGroups.find(g => g.id === currentLiveGroupId);
-      if (!currentGroup) return;
-
-      const lastCmd = currentGroup.commands[currentGroup.commands.length - 1];
-      if (lastCmd) {
-        lastCmd.running = false;
-        lastCmd.success = success !== false;
-        lastCmd.output = output || '';
+    function handleLiveToolResult(toolName, success, output, callId, meta = {}) {
+      const found = callId ? findLiveTool(callId) :
+        (() => {
+          const group = liveCommandGroups.find(g => g.id === currentLiveGroupId);
+          if (!group) return null;
+          const index = group.commands.findLastIndex(c => c.running);
+          return index < 0 ? null : { group, command: group.commands[index], index };
+        })();
+      if (!found) return;
+      found.command.running = false;
+      found.command.success = success === true;
+      if (!found.command.output) found.command.output = typeof output === 'string' ? output : '';
+      found.command.exitCode = meta.exitCode;
+      found.command.durationMs = meta.durationMs;
+      updateLiveCommandGroupUI(found.group);
+      const outputEl = document.getElementById('out_' + found.group.id + '_cmd_' + found.index);
+      if (outputEl && found.command.output) {
+        outputEl.classList.remove('hidden');
+        outputEl.scrollTop = outputEl.scrollHeight;
       }
-      updateLiveCommandGroupUI(currentGroup);
     }
 
     function updateLiveCommandGroupUI(group) {
@@ -1848,13 +1884,19 @@
         es.addEventListener('tool_call', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            handleLiveToolCall(payload.name, payload.args);
+            handleLiveToolCall(payload.name, payload.args, payload.callId);
+          } catch {}
+        });
+        es.addEventListener('tool_output', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            handleLiveToolOutput(payload.callId, payload.stream, payload.chunk);
           } catch {}
         });
         es.addEventListener('tool_result', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            handleLiveToolResult(payload.name, payload.success, payload.output);
+            handleLiveToolResult(payload.name, payload.success, payload.output, payload.callId, payload);
           } catch {}
         });
       } catch (e) {
@@ -2593,7 +2635,7 @@
         if (task.comments && task.comments.length > 0) {
           diagNote.textContent = task.agentSummary?.riskNote || task.agentSummary?.message || `已复核工作区改动及 AST 分块，共发现 ${task.comments.length} 项关注建议，请参考下方审查看板。`;
         } else {
-          diagNote.textContent = `已复核本地改动及 AST 语法树。本次变更代码逻辑严密，断言完整，规约与单元测试核验均通过。`;
+          diagNote.textContent = '静态审查没有发现需要反馈的缺陷。单元测试与编译是否通过，请以本次任务的真实执行日志为准。';
         }
       }
 
@@ -2608,8 +2650,27 @@
 
       const regEl = document.getElementById('detailRegressionStatus');
       if (regEl) {
-        regEl.textContent = task.agentSummary?.regressionStatus || '本地环境就绪';
+        regEl.textContent = task.agentSummary?.regressionStatus || '测试未执行，状态未知';
       }
+      const testing = task.testing || task.projectTesting;
+      const passedEl = document.getElementById('verificationPassedTests');
+      const failedEl = document.getElementById('verificationFailedTests');
+      const verificationTest = document.getElementById('verificationTestText');
+      const verificationBuild = document.getElementById('verificationBuildText');
+      const diffStatus = document.getElementById('verificationGitDiffStatus');
+      if (passedEl) passedEl.textContent = testing?.status === 'passed'
+        ? testing.executions.reduce((sum, item) => sum + (item.observedPassed || 0), 0) + ' 通过'
+        : testing?.status === 'failed' ? '测试失败'
+        : testing?.status === 'partial' ? '测试不完整'
+        : testing?.status === 'no-tests' ? '未发现测试' : '未运行';
+      if (failedEl) failedEl.textContent = testing?.status === 'passed'
+        ? testing.executions.reduce((sum, item) => sum + (item.observedFailed || 0), 0) + ' 失败'
+        : '失败数量未验证';
+      if (verificationTest) verificationTest.title = testing?.executions.map(item =>
+        (item.project.command?.executable || '') + '：' + item.status +
+        '（exit ' + String(item.exitCode) + '）').join('\n') || '';
+      if (verificationBuild) verificationBuild.textContent = '编译：未单独执行；不能根据静态审查推断通过。';
+      if (diffStatus) diffStatus.textContent = '未执行，不能标记通过。';
 
       const bpList = document.getElementById('detailBulletPoints');
       bpList.innerHTML = '';
@@ -2737,11 +2798,11 @@
               </div>
               <div>
                 <div class="text-xs font-bold text-emerald-950 flex items-center gap-2">
-                  <span>代码审查通过 (All Checks Passed)</span>
+                  <span>静态审查暂未发现问题</span>
                   <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-800 font-mono font-semibold">0 Issues · Clean</span>
                 </div>
                 <div class="text-[11px] text-emerald-800/90 mt-0.5">
-                  6 大专家 Agent 并发走查与 Self-Critique 二阶批判均未发现阻断性缺陷或规则违规。
+                  仅表示当前静态审查未返回缺陷；测试、编译是否通过以执行日志为准。
                 </div>
               </div>
             </div>
@@ -3025,14 +3086,20 @@
         reactEventSource.addEventListener('tool_call', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            handleLiveToolCall(payload.name, payload.args);
+            handleLiveToolCall(payload.name, payload.args, payload.callId);
           } catch {}
         });
 
+        reactEventSource.addEventListener('tool_output', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            handleLiveToolOutput(payload.callId, payload.stream, payload.chunk);
+          } catch {}
+        });
         reactEventSource.addEventListener('tool_result', (e) => {
           try {
             const payload = JSON.parse(e.data);
-            handleLiveToolResult(payload.name, payload.success, payload.output);
+            handleLiveToolResult(payload.name, payload.success, payload.output, payload.callId, payload);
           } catch {}
         });
 
