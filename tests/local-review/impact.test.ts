@@ -66,3 +66,48 @@ describe('TypeScript reverse dependency impact analysis', () => {
     expect(result.warnings.join(' ')).toMatch(/No impacted route/);
   });
 });
+
+describe('React Router static route impact', () => {
+  it('selects an impacted JSX screen, not unrelated pages', () => {
+    const cwd = project();
+    function put(file: string, source: string) {
+      const target = join(cwd, file);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, source);
+    }
+    put('src/screens/Login.tsx', 'import { LoginForm } from "../components/LoginForm"; export default function Login() { return <LoginForm/>; }');
+    put('src/screens/Dashboard.tsx', 'export default function Dashboard() { return <h1>Dashboard</h1>; }');
+    put('src/router.tsx', [
+      'import { Routes, Route } from "react-router-dom";',
+      'import Login from "./screens/Login";',
+      'import Dashboard from "./screens/Dashboard";',
+      'export const routes = <Routes><Route path="/login" element={<Login/>}/><Route path="/dashboard" element={<Dashboard/>}/></Routes>;'
+    ].join('\n'));
+    const result = analyzeImpact(cwd, ['src/components/LoginForm.tsx'], loadBrowserConfig(null));
+    expect(result.routes.map(r => r.route)).toContain('/login');
+    expect(result.routes.map(r => r.route)).not.toContain('/dashboard');
+  });
+
+  it('supports object-based createBrowserRouter and rejects dynamic paths', () => {
+    const cwd = project();
+    function put(file: string, source: string) {
+      const target = join(cwd, file);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, source);
+    }
+    put('src/screens/Login.tsx', 'import { LoginForm } from "../components/LoginForm"; export default function Login() { return <LoginForm/>; }');
+    put('src/screens/Dashboard.tsx', 'export default function Dashboard() { return <h1>Dashboard</h1>; }');
+    put('src/router.tsx', [
+      'import { createBrowserRouter } from "react-router-dom";',
+      'import Login from "./screens/Login";',
+      'import Dashboard from "./screens/Dashboard";',
+      'export const router = createBrowserRouter([{ path: "/login", element: <Login/> },',
+      '{ path: "/dashboard", element: <Dashboard/> },',
+      '{ path: "/users/:id", element: <Login/> }]);'
+    ].join('\n'));
+    const result = analyzeImpact(cwd, ['src/components/LoginForm.tsx'], loadBrowserConfig(null));
+    expect(result.routes.map(r => r.route)).toContain('/login');
+    expect(result.routes.map(r => r.route)).not.toContain('/dashboard');
+    expect(result.routes.map(r => r.route)).not.toContain('/users/:id');
+  });
+});

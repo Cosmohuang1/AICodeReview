@@ -98,6 +98,80 @@ function routeFromFile(file: string): string | null {
   return '/' + segments.join('/');
 }
 
+
+type RouterScreen = { route: string; dependency?: string };
+
+function reactRouterScreens(root: string, file: string, options: ts.CompilerOptions): RouterScreen[] {
+  const absolute = path.join(root, file);
+  let text: string;
+  try { text = fs.readFileSync(absolute, 'utf8'); } catch { return []; }
+  if (!/react-router(?:-dom)?/.test(text)) return [];
+  const ast = ts.createSourceFile(absolute, text, ts.ScriptTarget.Latest, true,
+    /\.tsx$|\.jsx$/.test(file) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const imports = new Map<string, string>();
+  for (const stmt of ast.statements) {
+    if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue;
+    const resolved = ts.resolveModuleName(stmt.moduleSpecifier.text, absolute, options, ts.sys)
+      .resolvedModule?.resolvedFileName;
+    if (!resolved) continue;
+    const dependency = normalized(path.relative(root, path.resolve(resolved)));
+    if (dependency.startsWith('../') || path.isAbsolute(dependency)) continue;
+    if (stmt.importClause?.name) imports.set(stmt.importClause.name.text, dependency);
+    const named = stmt.importClause?.namedBindings;
+    if (named && ts.isNamedImports(named)) {
+      for (const element of named.elements) imports.set(element.name.text, dependency);
+    }
+  }
+  const result: RouterScreen[] = [];
+  const nameOf = (value: ts.Expression): string | undefined => {
+    if (ts.isIdentifier(value)) return value.text;
+    if (ts.isJsxSelfClosingElement(value)) return value.tagName.getText(ast).split('.')[0];
+    if (ts.isJsxElement(value)) return value.openingElement.tagName.getText(ast).split('.')[0];
+    if (ts.isParenthesizedExpression(value)) return nameOf(value.expression);
+    return undefined;
+  };
+  const push = (route: string, symbol?: string) => {
+    if (!route.startsWith('/') || route.startsWith('//') ||
+        /[:*?#[\]\\]/.test(route) || !symbol) return;
+    result.push({ route, dependency: imports.get(symbol) });
+  };
+  const attribute = (jsx: ts.JsxOpeningLikeElement, key: string): ts.JsxAttribute | undefined =>
+    jsx.attributes.properties.find((a): a is ts.JsxAttribute =>
+      ts.isJsxAttribute(a) && a.name.text === key);
+  const extractObject = (node: ts.Node) => {
+    if (ts.isObjectLiteralExpression(node)) {
+      let route: string | undefined, symbol: string | undefined;
+      for (const property of node.properties) {
+        if (!ts.isPropertyAssignment(property)) continue;
+        const key = property.name.getText(ast).replace(/^['"]|['"]$/g, '');
+        if (key === 'path' && ts.isStringLiteral(property.initializer)) route = property.initializer.text;
+        if (key === 'element' || key === 'Component') symbol = nameOf(property.initializer);
+      }
+      if (route) push(route, symbol);
+    }
+    ts.forEachChild(node, extractObject);
+  };
+  const visit = (node: ts.Node) => {
+    const jsx = ts.isJsxSelfClosingElement(node) ? node :
+      ts.isJsxElement(node) ? node.openingElement : null;
+    if (jsx && jsx.tagName.getText(ast).split('.').pop() === 'Route') {
+      const p = attribute(jsx, 'path')?.initializer;
+      const e = attribute(jsx, 'element')?.initializer;
+      const component = attribute(jsx, 'Component')?.initializer;
+      const expression = e && ts.isJsxExpression(e) ? e.expression :
+        component && ts.isJsxExpression(component) ? component.expression : undefined;
+      if (p && ts.isStringLiteral(p) && expression) push(p.text, nameOf(expression));
+    }
+    if (ts.isCallExpression(node) &&
+      ['createBrowserRouter','createHashRouter','useRoutes'].includes(node.expression.getText(ast))) {
+      for (const arg of node.arguments) extractObject(arg);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(ast);
+  return result;
+}
+
 export interface ImpactRoute {
   route: string;
   routeFile: string;
@@ -184,6 +258,26 @@ export function analyzeImpact(root: string, changedFiles: string[], config: Brow
         route, routeFile: file, via: [file],
         sourceFiles: [...sources], confidence: 'framework'
       });
+    }
+  }
+  for (const file of files) {
+    for (const screen of reactRouterScreens(workspace, file, options)) {
+      if (explicitlyMappedRoutes.has(screen.route)) continue;
+      const related = new Set<string>();
+      if (changed.includes(file)) for (const src of owners.get(file) ?? []) related.add(src);
+      if (screen.dependency) for (const src of owners.get(screen.dependency) ?? []) related.add(src);
+      if (!related.size) continue;
+      const item = discovered.get(screen.route);
+      const via = [file, ...(screen.dependency ? [screen.dependency] : [])];
+      if (item) {
+        item.sourceFiles = [...new Set([...item.sourceFiles, ...related])];
+        item.via = [...new Set([...item.via, ...via])];
+      } else {
+        discovered.set(screen.route, {
+          route: screen.route, routeFile: file, sourceFiles: [...related],
+          via, confidence: 'framework'
+        });
+      }
     }
   }
   for (const route of discovered.values()) {
