@@ -24,6 +24,7 @@ import os from 'node:os';
 import { PatchService } from '../services/patch.service.js';
 import { ReviewService } from '../services/review.service.js';
 import { TestRunnerService } from '../services/test-runner.service.js';
+import { detectProjectTests, verifyProjectTests, type ProjectTestReport } from '../testing/project-tests.js';
 import { mcpManager } from '../mcp/client.js';
 import { generateMcpIdeConfig } from '../mcp/config.js';
 
@@ -101,6 +102,7 @@ export interface TaskDetail {
   comments: any[];
   chatHistory: Array<{ role: 'user' | 'agent'; text: string; time: string }>;
   rawDiff?: string;
+  testing?: ProjectTestReport;
 }
 
 // 动态任务列表 (100% 真实数据，由真实工作区和任务运行生成，绝无硬编码假数据)
@@ -1193,8 +1195,19 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
 
     const { summary, comments: enrichedComments, chunks, analyzedFiles: topDeepFiles } = reviewResult;
 
+    // Static review does not imply that any test was run.
+    const testDiscovery = detectProjectTests(targetCwd, parsedFiles.map(f => f.filePath));
+    const testing = await verifyProjectTests(targetCwd, testDiscovery, req.body.runTests === true);
+    const testState = testing.status === 'not-run'
+      ? '未运行（用户尚未授权执行项目测试）'
+      : testing.status === 'no-tests'
+        ? '未发现可运行测试'
+        : testing.status === 'passed'
+          ? '真实测试通过'
+          : testing.status === 'failed' ? '真实测试失败' : '测试不完整 / 缺少运行环境或可验证结果';
     broadcast('finish', {
-      text: `代码审查分析圆满完成！共分析 ${editedFilesList.length} 个变更文件，产出 ${enrichedComments.length} 处经过二阶核验的高质量批注。`
+      text: '静态审查完成；自动识别 ' + testDiscovery.projects.length +
+        ' 个项目测试目标。测试状态：' + testState
     });
 
     const bulletList: string[] = [];
@@ -1205,6 +1218,7 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     }
     bulletList.push(`代码变更涵盖 ${editedFilesList.length} 个核心文件 (+${totalAdds} -${totalDels})。`);
     bulletList.push(`当前分支: ${workspaceStatus.currentBranch}，最新提交: ${workspaceStatus.lastCommit.hash || 'HEAD'}。`);
+    bulletList.push(`项目识别：${testDiscovery.projects.map(p => p.kind + ':' + p.directory).join(', ') || '无测试清单'}；测试：${testState}。`);
 
     const newTaskItem: TaskDetail = {
       id: `rev_${Date.now()}`,
@@ -1215,7 +1229,8 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
       author: workspaceStatus.lastCommit.author || process.env.GIT_AUTHOR_NAME || 'Developer',
       workedTime: '刚刚完成',
       timestamp: '刚刚',
-      status: 'changes_ready',
+      status: testing.status === 'failed' ? 'needs_attention' : 'changes_ready',
+      testing,
       agentSummary: {
         commit: workspaceStatus.lastCommit.hash || 'HEAD',
         bulletPoints: bulletList,
@@ -1224,13 +1239,13 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
         walkthrough: summary.walkthrough,
         assessments: summary.assessments,
         mermaidDiagram: summary.mermaidDiagram,
-        riskNote: '已完成真实代码库静态分析与二阶过滤审查。',
-        regressionStatus: '本地审查完成',
+        riskNote: '已完成静态分析；测试执行状态以原始测试日志为准，未运行测试不代表代码已通过验证。',
+        regressionStatus: testState,
         thoughtProcess: `1. 提取 Diff：执行 \`${cmd}\` 扫描工作区变更，捕获 ${parsedFiles.length} 个文件的语法结构；\n` +
           `2. 智能剪枝：自动过滤样板与生成代码，提取 Top ${topDeepFiles.length} 个核心高危文件进行 AST 分块；\n` +
           `3. 审查并发执行：调度 6 个专家 Agent（Bug、Security、Performance、Style、Test、Custom）进行深度走查；\n` +
           `4. 二阶批判降噪：启动 Self-Critique 机制核验上下文有效性，滤除误报；\n` +
-          `5. 生成审查总结：输出结构化走查清单与风险说明。`,
+          `5. 生成审查总结：输出结构化走查清单与风险说明；\\n6. 项目测试：${testState}。`,
         conclusionHeading: summary.conclusionHeading || (enrichedComments.length > 0 ? `已复查最新提交，仍有 ${enrichedComments.length} 项问题需要处理。` : '已复查最新提交，未发现代码缺陷。'),
         message: summary.conclusionHeading || (enrichedComments.length > 0 ? `已复查最新提交，仍有 ${enrichedComments.length} 项问题需要处理。` : '已复查最新提交，未发现代码缺陷。'),
         steps: [
@@ -1261,10 +1276,29 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
                 output: `已完成 ${chunks.length} 个代码分块审查，经过二阶过滤得到 ${enrichedComments.length} 项有效批注`
               },
               {
-                command: 'git diff --check',
-                output: '✓ git diff --check: 工作区源码规范完整'
+                command: 'git diff --check (not executed)',
+                output: '此处只执行了静态审查，未实际运行 git diff --check。'
               }
             ]
+          },
+          {
+            title: '项目类型识别与真实测试执行',
+            message: testState,
+            commands: testing.executions.length
+              ? testing.executions.map(execution => ({
+                  command: [execution.project.command?.executable,
+                    ...(execution.project.command?.args || [])].filter(Boolean).join(' '),
+                  output: execution.reason + '\n' +
+                    'status=' + execution.status + ', exit=' + String(execution.exitCode) +
+                    ', observedPassed=' + String(execution.observedPassed) + '\n' +
+                    execution.outputSnippet.slice(-2200)
+                }))
+              : testDiscovery.projects.map(project => ({
+                  command: project.command
+                    ? [project.command.executable, ...project.command.args].join(' ')
+                    : '(No executable test target)',
+                  output: project.note + ' - ' + testState
+                }))
           },
           {
             title: 'Self-Critique 二阶核验与结论汇总',

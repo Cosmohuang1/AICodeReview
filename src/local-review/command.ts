@@ -15,6 +15,7 @@ import { loadRepoConfig } from '../config/loader.js';
 import { ReviewService } from '../services/review.service.js';
 import { buildPRBody, buildInlineCommentBody } from '../reporter/markdown.reporter.js';
 import type { GitScope, BrowserVerificationResult } from './types.js';
+import { detectProjectTests, verifyProjectTests, type ProjectTestReport } from '../testing/project-tests.js';
 
 function contextFiles(root: string, filenames: string[]): Map<string, string> {
   const contents = new Map<string, string>();
@@ -56,6 +57,32 @@ function browserMarkdown(browser: BrowserVerificationResult | null): string {
       '\n**警告：**\n' + browser.warnings.map(x => '- ' + escaped(x)).join('\n') + '\n' : '');
 }
 
+
+function testMarkdown(report: ProjectTestReport): string {
+  const command = (p: ProjectTestReport['projects'][number]) =>
+    p.command ? [p.command.executable, ...p.command.args].join(' ') : '(no configured tests)';
+  return [
+    '\n## Project detection / Automated tests',
+    '',
+    'Status: **' + report.status + '**. Approval: ' + (report.approved ? 'explicit' : 'not granted') + '.',
+    '',
+    '| Stack | Module | Test target | Readiness |',
+    '| --- | --- | --- | --- |',
+    ...report.projects.map(p => '| ' + p.kind + ' | ' + p.directory + ' | ' +
+      command(p).replace(/\|/g, '\\|') + ' | ' + p.readiness + ' |'),
+    ...(!report.projects.length ? ['No supported test manifest discovered.'] : []),
+    '',
+    ...report.executions.map(result => '### ' + result.project.kind + ' / ' + result.project.directory + '\n' +
+      '- Result: **' + result.status + '** (exit ' + (result.exitCode ?? 'unavailable') + ')\n' +
+      '- Duration: ' + result.durationMs + ' ms\n' +
+      '- ' + result.reason + '\n' +
+      '- Observed: ' + (result.observedPassed ?? 'unknown') + ' passed; ' +
+        (result.observedFailed ?? 'unknown') + ' failed\n\n' +
+      '\`\`\`text\n' + result.outputSnippet.replace(/\`\`\`/g, '\'\'\'') + '\n\`\`\`\n'),
+    ...report.warnings.map(w => '- Warning: ' + w)
+  ].join('\n');
+}
+
 export function registerLocalReviewCommand(program: Command): void {
   program.command('review')
     .description('Review local Git changes and optionally verify affected browser routes')
@@ -64,6 +91,8 @@ export function registerLocalReviewCommand(program: Command): void {
     .option('--include-untracked', 'include untracked text files (max 256 KB each)')
     .option('--browser', 'verify impacted routes using Playwright')
     .option('--browser-only', 'skip DeepSeek code review and run browser verification')
+    .option('--run-tests', 'explicitly approve discovered local test commands (no auto-install)')
+    .option('--tests-only', 'discover and execute project tests without DeepSeek or a browser')
     .option('--ai-tests', 'opt into read-only AI-proposed UI test scenarios')
     .option('--baseline-url <url>', 'compare configured assertions against a separately running local baseline')
     .option('--export-tests', 'export executed read-only plans into .ai-review/generated-tests')
@@ -78,7 +107,7 @@ export function registerLocalReviewCommand(program: Command): void {
     .option('-o, --output <path>', 'Markdown report path')
     .action(async (options: {
       scope: GitScope; base?: string; includeUntracked?: boolean;
-      browser?: boolean; browserOnly?: boolean; aiTests?: boolean; baselineUrl?: string; exportTests?: boolean; url?: string;
+      browser?: boolean; browserOnly?: boolean; runTests?: boolean; testsOnly?: boolean; aiTests?: boolean; baselineUrl?: string; exportTests?: boolean; url?: string;
       serverMode?: 'existing' | 'managed'; browserConnection?: 'isolated' | 'cdp';
       cdpEndpoint?: string; approveServerStart?: boolean; approveCdp?: boolean; approveInteractions?: boolean;
       config: string; output?: string;
@@ -98,7 +127,7 @@ export function registerLocalReviewCommand(program: Command): void {
           cwd, scope: options.base ? 'branch' : options.scope,
           base: options.base, includeUntracked: options.includeUntracked
         });
-        if (!changes.rawDiff.trim()) {
+        if (!changes.rawDiff.trim() && !options.testsOnly) {
           console.log('No changed files. Nothing to review or verify.');
           return;
         }
@@ -108,9 +137,11 @@ export function registerLocalReviewCommand(program: Command): void {
         const outputDir = path.dirname(output);
         mkdirSync(outputDir, { recursive: true });
         const started = Date.now();
+        const testDetection = detectProjectTests(cwd, changes.files);
+        const testing = await verifyProjectTests(cwd, testDetection, Boolean(options.runTests || options.testsOnly));
         let review: Awaited<ReturnType<typeof ReviewService.executeReview>> | null = null;
 
-        if (!options.browserOnly) {
+        if (!options.browserOnly && !options.testsOnly) {
           if (!process.env.DEEPSEEK_API_KEY) {
             throw new Error('DEEPSEEK_API_KEY is required; use --browser-only for browser tests without AI.');
           }
@@ -128,7 +159,7 @@ export function registerLocalReviewCommand(program: Command): void {
         let comparison: ReturnType<typeof compareWithBaseline> | null = null;
         let impact: ImpactAnalysis | null = null;
         let aiRationales: Record<string, string> = {};
-        const browserEnabled = options.browser || options.browserOnly || options.aiTests || options.baselineUrl;
+        const browserEnabled = !options.testsOnly && (options.browser || options.browserOnly || options.aiTests || options.baselineUrl);
         if (browserEnabled) {
           impact = analyzeImpact(cwd, changes.files, browserConfig);
           const explicitAndInferred = { ...browserConfig, mappings: impact.mappings };
@@ -202,8 +233,8 @@ export function registerLocalReviewCommand(program: Command): void {
         ) : [];
         // Legacy Agents cannot yet report execution completeness.
         const partial = Boolean(review && (review.agentCompletion !== 'complete' || review.summaryFailed)) || filesSkipped.length > 0 ||
-          Boolean(browser && ['partial', 'skipped'].includes(browser.status)) || Boolean(impact?.truncated);
-        const hasFindings = findings.some(f => f.severity === 'error') || browser?.status === 'failed';
+          Boolean(browser && ['partial', 'skipped'].includes(browser.status)) || Boolean(impact?.truncated) || (testing.approved && ['partial', 'no-tests'].includes(testing.status));
+        const hasFindings = findings.some(f => f.severity === 'error') || browser?.status === 'failed' || testing.status === 'failed';
 
         const report = {
           schemaVersion: 1, runId, startedAt: new Date(started).toISOString(),
@@ -224,7 +255,7 @@ export function registerLocalReviewCommand(program: Command): void {
             summaryFailed: review.summaryFailed ?? false,
             filesSkipped
           } : { skipped: true },
-          browser,
+          browser, testing,
           status: hasFindings ? 'findings' : partial ? 'partial' : 'passed'
         };
 
@@ -240,14 +271,14 @@ export function registerLocalReviewCommand(program: Command): void {
           (review.agentFailures?.length ? '\n' + review.agentFailures.map(e =>
             '- ' + e.agent + ' (' + e.file + '): ' + e.message).join('\n') : '') +
           (review.summaryFailed ? '\nSummary generation failed.' : '') + '\n' : '') +
-          browserMarkdown(browser) +
+          browserMarkdown(browser) + testMarkdown(testing) +
           (comparison ? '\n## Baseline comparison (potential regressions, not proof)\n\n' +
             comparison.map(item => '- ' + item.scenarioId + ': ' + item.assessment + ' (' + item.note + ')').join('\n') : ''), 'utf8');
         const htmlPath = path.join(outputDir, 'report.html');
         writeFileSync(htmlPath, renderLocalReviewHTML({
           runId, status: report.status, head: changes.head, impact, browser,
           findings, evidence: linked.evidence, reportDir: outputDir,
-          regressionComparison: comparison
+          regressionComparison: comparison, testing
         }), 'utf8');
         const jsonPath = path.join(outputDir, 'report.json');
         writeFileSync(jsonPath, JSON.stringify(report, null, 2), 'utf8');

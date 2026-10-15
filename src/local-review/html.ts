@@ -4,6 +4,7 @@ import type { ImpactAnalysis } from './impact.js';
 import type { LinkedEvidence, LinkedFinding } from './evidence.js';
 import { evidenceHref } from './evidence.js';
 import type { RegressionComparison } from './baseline.js';
+import type { ProjectTestReport } from '../testing/project-tests.js';
 
 function escapeHTML(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, c =>
@@ -21,6 +22,7 @@ export function renderLocalReviewHTML(input: {
   evidence: LinkedEvidence[];
   reportDir: string;
   regressionComparison?: RegressionComparison[] | null;
+  testing?: ProjectTestReport | null;
 }): string {
   const evidenceById = new Map(input.evidence.map(e => [e.id, e]));
   const linkArtifacts = (items: string[]) => items.map(filename => {
@@ -55,6 +57,23 @@ export function renderLocalReviewHTML(input: {
     '<li><strong>' + escapeHTML(item.assessment) + '</strong> · ' +
     escapeHTML(item.scenarioId) + ' · ' + escapeHTML(item.note) + '</li>'
   ).join('');
+
+  const testing = input.testing;
+  const testRows = (testing?.projects ?? []).map(project => {
+    const execution = testing?.executions.find(e =>
+      e.project.kind === project.kind && e.project.directory === project.directory);
+    return '<tr><td>' + escapeHTML(project.kind) + '</td><td>' +
+      escapeHTML(project.directory) + '</td><td>' + escapeHTML(project.note) +
+      '</td><td>' + escapeHTML(execution?.status ?? (testing?.approved ? 'not-configured' : 'not-run')) +
+      '</td><td>' + escapeHTML(execution?.observedPassed ?? 'unknown') +
+      '</td></tr>';
+  }).join('');
+  const testSection = testing ? '<section><h2>自动化测试发现与执行</h2><p>状态：' +
+    escapeHTML(testing.status) + ' · 执行授权：' + escapeHTML(testing.approved ? '已授权' : '未授权') +
+    '</p><table><thead><tr><th>技术栈</th><th>模块</th><th>测试配置</th><th>执行结果</th><th>通过用例</th></tr></thead>' +
+    '<tbody>' + testRows + '</tbody></table><ul>' +
+    testing.warnings.map(w => '<li>' + escapeHTML(w) + '</li>').join('') +
+    '</ul></section>' : '';
   const warnings = [
     ...(input.impact?.warnings ?? []),
     ...(input.browser?.warnings ?? []),
@@ -77,6 +96,7 @@ export function renderLocalReviewHTML(input: {
     '</strong></p><small>Browser failures show observed test results, not proven regressions.</small></header>',
     '<section><h2>受影响页面</h2><ul>' + (routes || '<li>未识别</li>') + '</ul></section>',
     '<section><h2>代码审查</h2>' + (findings || '<p>没有返回审查意见，或本次只运行浏览器验证。</p>') + '</section>',
+    testSection,
     '<section><h2>浏览器测试</h2><table><thead><tr><th>场景</th><th>页面</th><th>状态</th>',
     '<th>预期来源</th><th>诊断</th><th>证据</th></tr></thead><tbody>' + scenarios + '</tbody></table></section>',
     (input.regressionComparison ? '<section><h2>Baseline / HEAD 对比</h2><p>对比结果只是线索，尚未证明环境完全一致。</p><ul>' + regressions + '</ul></section>' : ''),

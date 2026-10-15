@@ -3,6 +3,7 @@ import { GitService, type WorkspaceStatus } from './git.service.js';
 import { PatchService, type FileChange } from './patch.service.js';
 import { TestRunnerService, type TestRunResult } from './test-runner.service.js';
 import { callDeepSeek } from '../agents/base.js';
+import { detectProjectTests, verifyProjectTests, type ProjectTestReport } from '../testing/project-tests.js';
 
 export interface ExecuteTaskParams {
   cwd: string;
@@ -32,6 +33,7 @@ export interface AgentTaskResult {
   riskNote: string;
   regressionStatus: string;
   testResult?: TestRunResult;
+  projectTesting?: ProjectTestReport;
   editedFiles: Array<{ path: string; additions: number; deletions: number }>;
   totalAdditions: number;
   totalDeletions: number;
@@ -122,7 +124,7 @@ export class AgentLoopService {
     const bulletPoints: string[] = Array.isArray(parsed.bulletPoints) && parsed.bulletPoints.length > 0
       ? parsed.bulletPoints
       : [`实现指令: ${params.prompt.slice(0, 40)}`];
-    const riskNote = parsed.riskNote || '已完成本地静态分析与边界测试回归。';
+    const modelRiskNote = parsed.riskNote || 'AI 静态分析完成；尚未验证测试结果。';
     const fileChanges: FileChange[] = Array.isArray(parsed.fileChanges) ? parsed.fileChanges : [];
 
     // 2. 真实写盘应用补丁
@@ -130,21 +132,51 @@ export class AgentLoopService {
       this.patchService.applyFileChanges(cwd, fileChanges);
     }
 
-    // 3. 运行真实测试套件
+    // 3. Detect the actual project stack before choosing a test runner.
+    // Execution is opt-out here because this endpoint is the explicitly authorized
+    // coding Agent; review-only endpoints require a separate explicit runTests flag.
+    const detection = detectProjectTests(cwd, fileChanges.map(f => f.path));
+    let projectTesting: ProjectTestReport | undefined;
     let testResult: TestRunResult | undefined;
     let regressionStatus = '未运行测试';
-
-    if (params.runTests !== false) {
-      const testCmd = params.testCmd || 'npm test';
+    if (params.runTests === false) {
+      projectTesting = await verifyProjectTests(cwd, detection, false);
+      regressionStatus = '未运行测试（已显式关闭）';
+    } else if (params.testCmd) {
+      // Historical explicit test commands are preserved for backward compatibility.
       try {
-        testResult = await this.testRunner.runTestSuite(cwd, testCmd);
-        if (testResult.success) {
-          regressionStatus = `${testResult.passed} 通过，${testResult.failed} 失败，0 跳过`;
-        } else {
-          regressionStatus = `${testResult.passed} 通过，${testResult.failed} 失败 (测试异常)`;
-        }
-      } catch {
-        regressionStatus = '测试执行受阻';
+        testResult = await this.testRunner.runTestSuite(cwd, params.testCmd);
+        regressionStatus = testResult.success
+          ? '指定测试命令退出 0；是否执行用例以日志为准'
+          : '指定测试命令失败，退出码 ' + testResult.exitCode;
+      } catch (error) {
+        regressionStatus = '指定测试命令执行受阻：' + String(error);
+      }
+    } else {
+      projectTesting = await verifyProjectTests(cwd, detection, true);
+      const passed = projectTesting.executions.reduce((n, e) => n + (e.observedPassed ?? 0), 0);
+      const failed = projectTesting.executions.reduce((n, e) => n + (e.observedFailed ?? 0), 0);
+      regressionStatus = projectTesting.status === 'passed'
+        ? '自动化测试通过：' + passed + ' 用例通过'
+        : projectTesting.status === 'no-tests'
+          ? '无可运行测试（已识别项目类型，未执行任何测试）'
+          : projectTesting.status === 'failed'
+            ? '自动化测试失败：' + failed + ' 个已报告的用例失败'
+            : '测试未完整验证：' + projectTesting.executions.map(x =>
+                x.project.kind + '/' + x.project.directory + '=' + x.status).join(', ');
+      const item = projectTesting.executions[0];
+      if (item) {
+        testResult = {
+          command: [item.project.command?.executable, ...(item.project.command?.args || [])].filter(Boolean).join(' '),
+          exitCode: item.exitCode ?? 1,
+          success: item.status === 'passed',
+          durationMs: item.durationMs,
+          passed: item.observedPassed ?? 0,
+          failed: item.observedFailed ?? 0,
+          total: (item.observedPassed ?? 0) + (item.observedFailed ?? 0),
+          outputSnippet: item.outputSnippet,
+          timedOut: item.status === 'blocked'
+        };
       }
     }
 
@@ -157,7 +189,12 @@ export class AgentLoopService {
     const branchName = params.branchName || `task/task-${Date.now().toString().slice(-5)}`;
     let commitHash = 'pending';
 
-    if (params.autoCommit !== false && updatedStatus.hasChanges) {
+    const testsPassed = params.testCmd
+      ? Boolean(testResult?.success)
+      : projectTesting?.status === 'passed';
+    // Never automatically commit unverified or failing changes. A user can
+    // inspect and manually commit after resolving the missing test environment.
+    if (params.autoCommit !== false && updatedStatus.hasChanges && testsPassed) {
       try {
         this.gitService.createBranch(cwd, branchName);
         commitHash = this.gitService.commitAll(cwd, summaryText);
@@ -177,7 +214,7 @@ export class AgentLoopService {
       thoughtProcess = `1. 用户指令解析：分析输入 "${params.prompt}"，确定核心意图与诉求范围；\n` +
         `2. 工作区上下文扫描：当前工作区 ${path.basename(cwd)}，位于分支 ${initialStatus.currentBranch}，基线提交 ${initialStatus.lastCommit.hash || 'HEAD'}；\n` +
         `3. 变更执行决策：${fileChanges.length > 0 ? `计划并实施了 ${fileChanges.length} 个核心文件的代码补丁写入；` : '识别到用户未提出具体代码变更指令，不执行读写操作，保持当前工作区纯净；'}\n` +
-        `4. 自动化回归验证：执行单元测试套件，检查断言覆盖与逻辑稳定性。`;
+        `4. 自动化回归验证：${regressionStatus}。`;
     }
 
     const steps: AgentStepItem[] = [
@@ -211,15 +248,26 @@ export class AgentLoopService {
       });
     }
 
-    if (params.runTests !== false && testResult) {
+    if (projectTesting) {
       steps.push({
-        title: '自动化测试套件回归验证',
-        commands: [
-          {
-            command: params.testCmd || 'npm test',
-            output: testResult.outputSnippet ? testResult.outputSnippet.slice(0, 500) : `${testResult.passed} 通过，${testResult.failed} 失败`
-          }
-        ]
+        title: '项目类型识别与自动化测试验证',
+        message: regressionStatus,
+        commands: projectTesting.executions.length
+          ? projectTesting.executions.map(e => ({
+              command: [e.project.command?.executable, ...(e.project.command?.args || [])].filter(Boolean).join(' '),
+              output: e.reason + '\n' + e.outputSnippet.slice(-2000)
+            }))
+          : detection.projects.map(p => ({
+              command: p.command
+                ? [p.command.executable, ...p.command.args].join(' ')
+                : '(No detected test command)',
+              output: p.note + '; ' + regressionStatus
+            }))
+      });
+    } else if (testResult) {
+      steps.push({
+        title: '显式指定的测试命令验证',
+        commands: [{ command: params.testCmd || '(not specified)', output: testResult.outputSnippet }]
       });
     }
 
@@ -233,9 +281,11 @@ export class AgentLoopService {
       message: parsed.message || summaryText,
       steps,
       bulletPoints,
-      riskNote,
+      riskNote: modelRiskNote + '\n真实测试状态：' + regressionStatus +
+        (!testsPassed ? '\n自动提交已阻止；需先完成或修复测试验证。' : ''),
       regressionStatus,
       testResult,
+      projectTesting,
       editedFiles: updatedStatus.changedFiles.map(f => ({
         path: f.path,
         additions: f.additions,

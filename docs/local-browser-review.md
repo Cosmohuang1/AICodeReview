@@ -218,3 +218,33 @@ Example:
 The dependency graph can follow HTML \`<script src="/js/orders.js">\` to \`wwwroot/js/orders.js\`, and explicit C# → JavaScript edges. It will not guess proprietary controller names, internal route registration logic, private API conventions or C# call sites. Configure those via \`dependencyRules\` and \`mappings\`. Network/external script URLs are excluded from local dependency inference.
 
 These are test-planning hints, not proof of a code-level root cause. All proposed browser assertions still require observable evidence.
+
+
+## Polyglot project test detection and execution
+
+The review CLI and Web code-review endpoint now scan project manifests **without executing any code**. Supported ecosystems:
+
+| Stack | Detection | Opt-in verification |
+|---|---|---|
+| C# / .NET | \`.sln\`, \`.slnx\`, \`.csproj\` test SDK | \`dotnet test <solution-or-project> --no-restore --nologo\` |
+| Java | \`pom.xml\`, \`build.gradle[.kts]\` | \`mvn --offline --batch-mode test\` / \`gradle --offline --no-daemon test\` |
+| Node.js | \`package.json\` test script and package manager lockfiles | \`npm test\`, \`pnpm test\`, \`yarn test\` |
+| Python | \`pyproject.toml\`, \`pytest.ini\`, \`tox.ini\`, tests/ | \`python3 -m pytest -q\` (Windows: \`python -m pytest -q\`) |
+
+For a mixed-language repository, multiple test targets can be selected based on the changed subprojects. Commands use fixed executable+argv, never model-written shell commands. External build tools and project test scripts can execute user/project code, so test execution is opt-in for **review-only** workflows.
+
+Use:
+
+    npm run review -- review --tests-only
+    npm run review -- review --scope working --run-tests
+    npm run review -- review --browser --run-tests
+
+\`--tests-only\` works without a DeepSeek API key and does not start a browser. The standard \`review\` command discovers possible test commands but reports \`not-run\` until \`--run-tests\` is supplied.
+
+In the Web code-review workspace, use the **执行项目测试** checkbox when initiating a review to explicitly authorize execution. API consumers pass \`runTests: true\` to \`POST /api/review\`. Without this flag, the result explicitly shows *tests not run* alongside discovered projects and test commands. The coding Agent workflow automatically verifies tests after successful code edits unless explicitly disabled; it will not auto-commit changes lacking passing tests.
+
+Test outcomes: \`passed\` requires exit code 0 **and observed test passes in output**; \`failed\` means a test process exited unsuccessfully; \`partial\` includes absent executables, skipped targets, or success output that does not establish any tests were run; \`no-tests\` means no eligible configured test target; \`not-run\` means permission was not given. The report includes invoked argv, duration, exit code and bounded stderr/stdout snippets.
+
+No dependency install/restore, remote fetch, machine-wide environment changes or automatic source edits are performed by the test detector. Maven/Gradle run offline and .NET uses \`--no-restore\` to avoid implicit downloads; in a fresh environment, prepare dependencies first. User-supplied test scripts are still arbitrary project code: only run them in an approved, disposable testing environment with test credentials and test databases.
+
+This is manifest-level and test-runner-level discovery. It does not claim full test coverage or successful verification of any specific code change merely because some tests passed.

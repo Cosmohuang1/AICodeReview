@@ -342,6 +342,11 @@
         </div>
       </div>
       <div class="flex items-center gap-2 shrink-0">
+        <label class="flex items-center gap-1.5 text-[11px] text-zinc-600 cursor-pointer"
+               title="自动识别 Java、C#、Node.js、Python 测试配置；勾选后才执行项目测试脚本，不自动安装依赖">
+          <input id="reviewRunTests" type="checkbox" class="rounded border-zinc-300 text-orange-500">
+          执行项目测试
+        </label>
         <button id="btnReviewCurrentChanges" onclick="reviewCurrentChanges()" class="px-3.5 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-xs font-semibold text-white shadow-xs flex items-center gap-2 transition-all cursor-pointer hover:shadow-sm">
           <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
           <span>一键审查当前变更</span>
@@ -1863,7 +1868,8 @@
             mode: 'worktree',
             repoPath: activeRepoPath || undefined,
             prompt: userPrompt || undefined,
-            sessionId
+            sessionId,
+            runTests: document.getElementById('reviewRunTests')?.checked === true
           }),
         });
         const data = await res.json();
