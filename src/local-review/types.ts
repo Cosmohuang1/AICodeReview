@@ -24,7 +24,7 @@ export interface TestScenario {
   id: string;
   route: string;
   sourceFiles: string[];
-  expectationSource: 'configured' | 'smoke';
+  expectationSource: 'configured' | 'smoke' | 'ai-proposed';
   actions: TestAction[];
 }
 
@@ -32,8 +32,9 @@ export interface ScenarioResult {
   id: string;
   route: string;
   status: 'passed' | 'failed' | 'blocked' | 'error';
-  expectationSource: 'configured' | 'smoke';
+  expectationSource: 'configured' | 'smoke' | 'ai-proposed';
   durationMs: number;
+  sourceFiles: string[];
   messages: string[];
   evidence: string[];
 }

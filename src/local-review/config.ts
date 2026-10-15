@@ -39,6 +39,10 @@ const browserSchema = z.object({
     endpoint: z.string().url().optional(),
     headless: z.boolean().default(true)
   }).default({}),
+  aiPlanning: z.object({
+    enabled: z.boolean().default(false),
+    maxScenarios: z.number().int().min(0).max(5).default(2)
+  }).default({}),
   maxScenarios: z.number().int().min(1).max(30).default(5),
   scenarioTimeoutMs: z.number().int().min(1000).max(120000).default(30000)
 }).default({});

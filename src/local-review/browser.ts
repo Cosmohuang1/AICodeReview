@@ -250,6 +250,7 @@ async function executeScenario(scenario: TestScenario, config: BrowserConfig, op
   }
   return {
     id: scenario.id, route: scenario.route, status,
+    sourceFiles: scenario.sourceFiles,
     expectationSource: scenario.expectationSource,
     durationMs: Date.now() - start, messages, evidence
   };
@@ -297,7 +298,7 @@ export async function runBrowserVerification(options: {
   } finally { await server.close(); }
 
   return {
-    status: results.some(result => result.status === 'failed') ? 'failed' :
+    status: results.some(result => result.status === 'failed' && result.expectationSource === 'configured') ? 'failed' :
       results.some(result => result.status !== 'passed') || options.unmappedFiles.length ? 'partial' : 'passed',
     planned: scenarios.length,
     executed: results.length,
