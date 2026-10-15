@@ -30,7 +30,7 @@ app.use('/api', apiRouter);
 app.use('/api/local-review', localReviewRouter);
 
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', version: '0.1.0' });
+  res.json({ status: 'ok', version: '0.2.0' });
 });
 
 app.post('/webhook', webhookHandler);
