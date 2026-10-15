@@ -15,7 +15,7 @@ describe('safe generated regression tests', () => {
     const source = generatedTestSource(base, 'http://127.0.0.1:3000');
     expect(source).toContain("import { test, expect } from '@playwright/test'");
     expect(source).toContain('toBeVisible()');
-    expect(source).toContain('Log\\'in'.replace("\\'", "'").replace("'", "Log'in").slice(0,0) || ''); // generated source must remain a string
+    expect(source).toContain(JSON.stringify("Log'in"));
     expect(source).toContain('AI proposed expectations are NOT verified requirements');
   });
 
