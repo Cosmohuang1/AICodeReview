@@ -194,6 +194,11 @@ export function detectProjectTests(root: string, changedFiles: string[] = []): P
   return { projects: chosen.slice(0, MAX_PROJECTS), warnings, truncated };
 }
 
+function missingTestEnvironment(output: string): boolean {
+  const message = output.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
+  return /No module named ['"]?pytest\b|ModuleNotFoundError:\s+No module named|NETSDK1004|project\.assets\.json.*not found|Could not resolve dependencies.*offline|No cached version .* available|(?:vitest|jest|mocha|pytest|dotnet|mvn|gradle):\s*(?:command )?not found|Cannot find module ['"](?:vitest|jest|mocha|ava|tsx|ts-node)['"]/i.test(message);
+}
+
 function getCounts(output: string): { passed: number | null; failed: number | null } {
   const vitest = output.match(/Tests\s+([^\n\r]*)/i);
   if (vitest) {
@@ -245,12 +250,13 @@ export async function verifyProjectTests(
         const exitCode = error && typeof error.code === 'number' ? error.code :
           error ? null : 0;
         const blocked = Boolean(error &&
-          (('code' in error && ['ENOENT', 'EACCES', 'ETIMEDOUT', 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'].includes(String(error.code))) ||
+          (missingTestEnvironment(combined) ||
+           ('code' in error && ['ENOENT', 'EACCES', 'ETIMEDOUT', 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'].includes(String(error.code))) ||
            ('killed' in error && error.killed)));
         const status: TestOutcome = blocked ? 'blocked' :
           exitCode === 0 ? (observed.passed !== null && observed.passed > 0 ? 'passed' : 'inconclusive') :
           'failed';
-        const reason = blocked ? 'Executable unavailable, timed out or test output exceeded limit' :
+        const reason = blocked ? 'Test executable/dependencies unavailable, timed out, or output exceeded limit' :
           exitCode === 0 ? status === 'passed' ?
             'Test runner exited successfully and reported passing tests' :
             'Command exited successfully, but no executed test cases could be verified from its output' :

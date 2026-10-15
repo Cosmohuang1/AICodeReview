@@ -103,4 +103,14 @@ describe('multi-language project test discovery', () => {
     expect(report.status).toBe('failed');
     expect(report.executions[0].exitCode).toBe(1);
   }, 20000);
+  it('distinguishes missing pytest dependency from a real failed test assertion', async () => {
+    const root = temp();
+    root.put('package.json', JSON.stringify({
+      scripts: { test: 'node -e "console.error(\'No module named pytest\'); process.exit(1)"' }
+    }));
+    const report = await verifyProjectTests(root.cwd, detectProjectTests(root.cwd), true);
+    expect(report.status).toBe('partial');
+    expect(report.executions[0].status).toBe('blocked');
+  }, 20000);
+
 });
