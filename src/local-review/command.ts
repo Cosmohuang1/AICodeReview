@@ -9,6 +9,7 @@ import { analyzeImpact, type ImpactAnalysis } from './impact.js';
 import { proposeReadOnlyScenarios } from './ai-planner.js';
 import { linkReviewEvidence } from './evidence.js';
 import { renderLocalReviewHTML } from './html.js';
+import { compareWithBaseline } from './baseline.js';
 import { loadRepoConfig } from '../config/loader.js';
 import { ReviewService } from '../services/review.service.js';
 import { buildPRBody, buildInlineCommentBody } from '../reporter/markdown.reporter.js';
@@ -63,6 +64,7 @@ export function registerLocalReviewCommand(program: Command): void {
     .option('--browser', 'verify impacted routes using Playwright')
     .option('--browser-only', 'skip DeepSeek code review and run browser verification')
     .option('--ai-tests', 'opt into read-only AI-proposed UI test scenarios')
+    .option('--baseline-url <url>', 'compare configured assertions against a separately running local baseline')
     .option('--url <url>', 'local application base URL')
     .option('--server-mode <mode>', 'existing | managed')
     .option('--browser-connection <mode>', 'isolated | cdp')
@@ -73,7 +75,7 @@ export function registerLocalReviewCommand(program: Command): void {
     .option('-o, --output <path>', 'Markdown report path')
     .action(async (options: {
       scope: GitScope; base?: string; includeUntracked?: boolean;
-      browser?: boolean; browserOnly?: boolean; aiTests?: boolean; url?: string;
+      browser?: boolean; browserOnly?: boolean; aiTests?: boolean; baselineUrl?: string; url?: string;
       serverMode?: 'existing' | 'managed'; browserConnection?: 'isolated' | 'cdp';
       cdpEndpoint?: string; approveServerStart?: boolean; approveCdp?: boolean;
       config: string; output?: string;
@@ -119,9 +121,11 @@ export function registerLocalReviewCommand(program: Command): void {
         }
 
         let browser: BrowserVerificationResult | null = null;
+        let baseline: BrowserVerificationResult | null = null;
+        let comparison: ReturnType<typeof compareWithBaseline> | null = null;
         let impact: ImpactAnalysis | null = null;
         let aiRationales: Record<string, string> = {};
-        const browserEnabled = options.browser || options.browserOnly || options.aiTests;
+        const browserEnabled = options.browser || options.browserOnly || options.aiTests || options.baselineUrl;
         if (browserEnabled) {
           impact = analyzeImpact(cwd, changes.files, browserConfig);
           const explicitAndInferred = { ...browserConfig, mappings: impact.mappings };
@@ -156,6 +160,23 @@ export function registerLocalReviewCommand(program: Command): void {
             approveServerStart: Boolean(options.approveServerStart),
             approveCDP: Boolean(options.approveCdp), endpoint: options.cdpEndpoint
           });
+          if (options.baselineUrl) {
+            // Baseline must already be served independently. Never start commands
+            // against an old Git tree or access personal Chrome for the baseline.
+            const baselineConfig = {
+              ...browserConfig,
+              server: { ...browserConfig.server, mode: 'existing' as const },
+              connection: { ...browserConfig.connection, mode: 'isolated' as const },
+              allowedOrigins: [options.baselineUrl]
+            };
+            baseline = await runBrowserVerification({
+              cwd, config: baselineConfig, baseURL: options.baselineUrl,
+              scenarios: planned, unmappedFiles: plan.unmappedFiles,
+              warnings: [], artifactDir: path.join(outputDir, 'baseline-artifacts'),
+              approveServerStart: false, approveCDP: false
+            });
+            comparison = compareWithBaseline(browser, baseline);
+          }
         }
 
         const linked = linkReviewEvidence(review?.comments ?? [], browser);
@@ -178,6 +199,8 @@ export function registerLocalReviewCommand(program: Command): void {
           evidence: linked.evidence,
           unattributedFailures: linked.unattributedFailures,
           aiTestRationales: aiRationales,
+          baseline: baseline ? { url: options.baselineUrl, ...baseline } : null,
+          regressionComparison: comparison,
           review: review ? {
             analyzedFiles: review.analyzedFiles.map(f => f.filePath),
             findings, summary: review.summary,
@@ -195,11 +218,14 @@ export function registerLocalReviewCommand(program: Command): void {
               : '\nNo findings returned from completed review steps. Agent completeness is currently unknown.\n')
           : '# Local Browser Verification\n\nDeepSeek review skipped.\n';
 
-        writeFileSync(output, reviewMd + browserMarkdown(browser), 'utf8');
+        writeFileSync(output, reviewMd + browserMarkdown(browser) +
+          (comparison ? '\n## Baseline comparison (potential regressions, not proof)\n\n' +
+            comparison.map(item => '- ' + item.scenarioId + ': ' + item.assessment + ' (' + item.note + ')').join('\n') : ''), 'utf8');
         const htmlPath = path.join(outputDir, 'report.html');
         writeFileSync(htmlPath, renderLocalReviewHTML({
           runId, status: report.status, head: changes.head, impact, browser,
-          findings, evidence: linked.evidence, reportDir: outputDir
+          findings, evidence: linked.evidence, reportDir: outputDir,
+          regressionComparison: comparison
         }), 'utf8');
         const jsonPath = path.join(outputDir, 'report.json');
         writeFileSync(jsonPath, JSON.stringify(report, null, 2), 'utf8');
