@@ -1042,7 +1042,8 @@ apiRouter.post('/review', async (req: Request, res: Response) => {
     return res.status(400).json({ error: `指定仓库路径不存在: ${targetCwd}` });
   }
 
-  const isReviewIntent = !prompt || /(?:review|审查|走查|检查|看下代码|帮我看|找bug|分析代码|评阅)/i.test(prompt);
+  const isReviewIntent = !prompt ||
+    /(?:review|审查|走查|检查|看下代码|帮我看|找bug|分析代码|评阅|测试了(?:吗|嘛)|测过了吗|跑过测试|是否(?:已经)?跑(?:过)?测试|有(?:没有|没)跑测试|测试结果|测试报告|测试情况|回归验证|验证过了吗)/i.test(prompt);
 
   // 1. 只有当用户明确输入了具体编码/修改需求指令时，才触发真实 Coding Agent 循环（写盘 + 跑测 + 提交）
   if (prompt && prompt.trim().length > 0 && !isReviewIntent) {
