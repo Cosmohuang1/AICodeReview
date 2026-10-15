@@ -96,3 +96,73 @@ Browser access is limited to explicitly allowed loopback origins. Requests for o
 Browser assertion failure is not proof that the current Git change caused a regression. It indicates a failure of an explicitly configured expectation. Errors from browsers, execution, and unavailable services are reported as partial/incomplete rather than source-code bugs. The legacy AI Agent API does not yet expose per-agent completion status, so AI review completeness is reported as unknown, never falsely asserted as fully checked.
 
 JSON review status values: passed, findings, partial. Exit codes: 0 (no blocking result), 1 (blocking finding/failed assertion), 2 (execution/config failure), 3 (incomplete/partial review). No GitHub PR code is modified by this CLI command.
+
+
+## New: automatic route impact (bounded AST import graph)
+
+The analyzer reads local TypeScript/JavaScript import/export declarations using the
+TypeScript compiler module resolver (including tsconfig path aliases), builds an
+in-memory reverse dependency map, then traces changed files to known Next.js
+App Router and Pages Router page entries. Unknown dynamic parameters such as
+/users/[id] are never converted into guessed test URLs. Explicit mappings still
+take precedence. Scanning is bounded to 3000 source files and 512 KB per file,
+with warnings when coverage is incomplete.
+
+### Optional AI-proposed tests
+
+    npm run review -- review --browser --ai-tests
+
+Or configure:
+
+    browser:
+      aiPlanning:
+        enabled: true
+        maxScenarios: 2
+
+AI proposals use the existing DeepSeek API key and send a capped diff excerpt
+to the provider. The model may propose only goto/assertVisible/assertURL;
+responses are parsed with a strict Zod schema, checked against known routes,
+and marked ai-proposed. Assertions suggested by AI are exploratory, not confirmed
+bugs, even if they fail. Without a key, the planner is skipped with a warning.
+
+### Optional local Baseline comparison
+
+Start *both* revisions in separately configured local environments with equivalent
+test data. Example: baseline on port 3001, worktree HEAD on port 3000:
+
+    npm run review -- review --browser \
+      --url http://127.0.0.1:3000 \
+      --baseline-url http://127.0.0.1:3001
+
+Only explicit configured assertions are compared. A baseline pass plus a HEAD
+failure is a *candidate regression*, not proven causation. The tool does not
+checkout branches, mutate project files, run Git worktree build commands, or
+assume that the two environments are identical.
+
+### Offline HTML + evidence correlation
+
+Each run writes report.md, report.json, report.html and a redacted test-plan.json.
+Findings are linked to browser scenario evidence when their changed file matches
+the scenario's sourceFiles. This is labeled corroborated correlation, not a
+confirmed code-level root cause. Images/traces are written under the run folder.
+
+## Web console (explicitly opt-in, restricted browser-only mode)
+
+The included standalone page is served at /local-review.html when running the
+existing Web server. For security the API is disabled unless explicitly enabled.
+Set strong, randomly generated LOCAL_REVIEW_API_TOKEN (at least 24 characters)
+and ENABLE_LOCAL_BROWSER_API=1, and optionally LOCAL_REVIEW_ROOT to the
+absolute path of the repository you want to review. Start the Web server, open
+http://127.0.0.1:3000/local-review.html on the same machine, and enter the token.
+
+The API endpoint /api/local-review/verify only accepts loopback connections,
+same-origin browser requests and a constant-time verified token. It refuses
+arbitrary repository paths, shell commands, managed app startup, Chrome CDP and
+configured click/fill actions. It only performs non-interactive, isolated
+Chromium checks; AI requests must be invoked explicitly with the CLI. This is a
+separate safer Web entry point, not a replacement for a full authenticated IDE
+or remote multi-user browser automation service.
+
+Beware that the app under test may still call production APIs. Always use a
+separate test environment. Outputs can contain private page data and must not be
+published or committed to a repository.
