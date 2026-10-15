@@ -3,6 +3,7 @@ import type { BrowserVerificationResult } from './types.js';
 import type { ImpactAnalysis } from './impact.js';
 import type { LinkedEvidence, LinkedFinding } from './evidence.js';
 import { evidenceHref } from './evidence.js';
+import type { RegressionComparison } from './baseline.js';
 
 function escapeHTML(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, c =>
@@ -19,6 +20,7 @@ export function renderLocalReviewHTML(input: {
   findings: LinkedFinding[];
   evidence: LinkedEvidence[];
   reportDir: string;
+  regressionComparison?: RegressionComparison[] | null;
 }): string {
   const evidenceById = new Map(input.evidence.map(e => [e.id, e]));
   const linkArtifacts = (items: string[]) => items.map(filename => {
@@ -49,6 +51,10 @@ export function renderLocalReviewHTML(input: {
     '</td><td>' + escapeHTML(s.messages.join('; ')) + '</td><td>' + linkArtifacts(s.evidence) +
     '</td></tr>'
   ).join('');
+  const regressions = (input.regressionComparison ?? []).map(item =>
+    '<li><strong>' + escapeHTML(item.assessment) + '</strong> · ' +
+    escapeHTML(item.scenarioId) + ' · ' + escapeHTML(item.note) + '</li>'
+  ).join('');
   const warnings = [
     ...(input.impact?.warnings ?? []),
     ...(input.browser?.warnings ?? []),
@@ -73,6 +79,7 @@ export function renderLocalReviewHTML(input: {
     '<section><h2>代码审查</h2>' + (findings || '<p>没有返回审查意见，或本次只运行浏览器验证。</p>') + '</section>',
     '<section><h2>浏览器测试</h2><table><thead><tr><th>场景</th><th>页面</th><th>状态</th>',
     '<th>预期来源</th><th>诊断</th><th>证据</th></tr></thead><tbody>' + scenarios + '</tbody></table></section>',
+    (input.regressionComparison ? '<section><h2>Baseline / HEAD 对比</h2><p>对比结果只是线索，尚未证明环境完全一致。</p><ul>' + regressions + '</ul></section>' : ''),
     '<section><h2>覆盖与限制</h2><ul>' + (warnings || '<li>没有额外警告</li>') + '</ul></section>',
     '</body></html>'
   ].join('');
