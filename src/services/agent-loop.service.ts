@@ -192,7 +192,7 @@ export class AgentLoopService {
     let commitHash = 'pending';
 
     const testsPassed = params.testCmd
-      ? Boolean(testResult?.success)
+      ? Boolean(testResult?.success && testResult.passed > 0)
       : projectTesting?.status === 'passed';
     // Never automatically commit unverified or failing changes. A user can
     // inspect and manually commit after resolving the missing test environment.

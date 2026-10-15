@@ -56,4 +56,12 @@ describe('TestRunnerService', () => {
     expect(result.success).toBe(false);
     expect(result.outputSnippet).toContain('SyntaxError');
   });
+  it('不会把退出 0 但没有任何测试用例输出的命令算成已通过测试', () => {
+    const runner = new TestRunnerService();
+    const result = runner.parseTestOutput('Build completed successfully', 0, 20);
+    expect(result.success).toBe(true);
+    expect(result.passed).toBe(0);
+    expect(result.total).toBe(0);
+  });
+
 });
