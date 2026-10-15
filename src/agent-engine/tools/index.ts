@@ -1,6 +1,6 @@
 import { readFileTool } from './read-file.js';
 import { editFileTool } from './edit-file.js';
-import { runCommandTool } from './run-command.js';
+import { runCommandTool, type CommandProgress } from './run-command.js';
 import { searchCodeTool } from './search-code.js';
 import { listDirTool } from './list-dir.js';
 import type { AgentToolDefinition, ToolResult } from './types.js';
@@ -91,7 +91,8 @@ export const AGENT_TOOLS: AgentToolDefinition[] = [
 export async function executeAgentTool(
   cwd: string,
   toolName: string,
-  args: Record<string, any>
+  args: Record<string, any>,
+  progress?: CommandProgress
 ): Promise<ToolResult> {
   switch (toolName) {
     case 'read_file':
@@ -99,7 +100,7 @@ export async function executeAgentTool(
     case 'edit_file':
       return editFileTool(cwd, args as any);
     case 'run_command':
-      return runCommandTool(cwd, args as any);
+      return runCommandTool(cwd, args as any, progress);
     case 'search_code':
       return searchCodeTool(cwd, args as any);
     case 'list_dir':

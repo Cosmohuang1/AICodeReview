@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { execSync, exec } from 'node:child_process';
+import { execSync, exec, execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseDiff } from '../parser/diff.parser.js';
@@ -441,6 +441,126 @@ apiRouter.post('/verification/test-run', async (req: Request, res: Response) => 
   }
 });
 
+
+/**
+ * Streaming verification for the user's explicit "运行验证" action.
+ * Emits NDJSON as commands start, write stdout/stderr, and exit. The browser
+ * MUST NOT infer passing tests or successful compilation from this endpoint's
+ * mere HTTP 200 status.
+ */
+apiRouter.post('/verification/stream', async (req: Request, res: Response) => {
+  const cwd = req.body?.repoPath ? path.resolve(req.body.repoPath) : process.cwd();
+  if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
+    res.status(400).json({ error: 'Repository directory not found' });
+    return;
+  }
+  res.writeHead(200, {
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  res.flushHeaders();
+  let disconnected = false;
+  res.on('close', () => { disconnected = true; });
+  const emit = (payload: Record<string, unknown>) => {
+    if (!disconnected && !res.writableEnded) {
+      try { res.write(JSON.stringify(payload) + '\n'); } catch { disconnected = true; }
+    }
+  };
+  try {
+    const files = Array.isArray(req.body?.files)
+      ? req.body.files.filter((value: unknown): value is string => typeof value === 'string').slice(0, 100)
+      : [];
+    const detection = detectProjectTests(cwd, files);
+    emit({ type: 'discovery', projects: detection.projects.map(p => ({
+      kind: p.kind, directory: p.directory, note: p.note, readiness: p.readiness
+    })) });
+    const testing = await verifyProjectTests(cwd, detection, true, 120_000, event => {
+      const callId = 'button-test:' + event.project.kind + ':' + event.project.directory;
+      if (event.phase === 'start') {
+        emit({ type: 'tool_call', callId, name: 'test',
+          args: { command: event.command } });
+      } else if (event.phase === 'output') {
+        emit({ type: 'tool_output', callId, name: 'test',
+          stream: event.stream, chunk: event.chunk });
+      } else if (event.result) {
+        emit({ type: 'tool_result', callId, name: 'test',
+          status: event.result.status, success: event.result.status === 'passed',
+          exitCode: event.result.exitCode, durationMs: event.result.durationMs,
+          observedPassed: event.result.observedPassed,
+          observedFailed: event.result.observedFailed,
+          output: event.result.outputSnippet || event.result.reason });
+      }
+    });
+    emit({ type: 'test_summary', testing });
+
+    const solutions = fs.readdirSync(cwd).filter(name => /\.slnx?$/.test(name));
+    let target: { executable: string; args: string[] } | null = null;
+    let buildNote = '';
+    if (solutions.length === 1) {
+      target = { executable: 'dotnet',
+        args: ['build', solutions[0], '--no-restore', '--nologo'] };
+    } else if (solutions.length > 1) {
+      buildNote = 'Multiple solutions; build target is ambiguous. Choose a solution explicitly.';
+    } else if (fs.existsSync(path.join(cwd, 'package.json'))) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'));
+        if (typeof pkg.scripts?.build === 'string' && pkg.scripts.build.trim()) {
+          target = { executable: 'npm', args: ['run', 'build'] };
+        } else buildNote = 'No package.json build script is configured.';
+      } catch { buildNote = 'Invalid package.json; build skipped.'; }
+    } else {
+      buildNote = 'No supported build target detected at repository root.';
+    }
+
+    if (!target) {
+      emit({ type: 'build_summary', build: { status: 'skipped', note: buildNote } });
+    } else {
+      const command = [target.executable, ...target.args].join(' ');
+      const callId = 'button-build';
+      const start = Date.now();
+      emit({ type: 'tool_call', callId, name: 'build', args: { command } });
+      await new Promise<void>(resolve => {
+        const child = execFile(target.executable, target.args, {
+          cwd, shell: false, timeout: 120_000, maxBuffer: 2 * 1024 * 1024,
+          windowsHide: true
+        }, (error, stdout, stderr) => {
+          const exitCode = error && typeof error.code === 'number' ? error.code :
+            error ? null : 0;
+          const blocked = Boolean(error && (error.killed ||
+            error.code === 'ENOENT' || error.code === 'EACCES' ||
+            /NETSDK1004|assets\.json.*not found|could not find/.test(String(stderr))));
+          const status = blocked ? 'blocked' : exitCode === 0 ? 'passed' : 'failed';
+          const output = (String(stdout || '') + '\n' + String(stderr || '')).trim();
+          const result = { status, exitCode, durationMs: Date.now() - start,
+            note: status === 'passed' ? 'Build command exited 0' :
+              blocked ? 'Build environment unavailable or timed out' : 'Build failed',
+            outputSnippet: output.slice(-4000) };
+          emit({ type: 'tool_result', callId, name: 'build',
+            success: status === 'passed', ...result, output: result.outputSnippet || result.note });
+          emit({ type: 'build_summary', build: result });
+          resolve();
+        });
+        let sent = 0;
+        for (const stream of ['stdout', 'stderr'] as const) {
+          child[stream]?.on('data', (buffer: Buffer | string) => {
+            const chunk = String(buffer);
+            if (sent >= 256 * 1024) return;
+            const piece = chunk.slice(0, 256 * 1024 - sent);
+            sent += piece.length;
+            emit({ type: 'tool_output', callId, name: 'build', stream, chunk: piece });
+          });
+        }
+      });
+    }
+    emit({ type: 'finish', message: 'Real command execution finished.' });
+  } catch (error) {
+    emit({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+  } finally {
+    if (!res.writableEnded) res.end();
+  }
+});
+
 /**
  * 动态获取系统真实运行环境与指标
  */
@@ -776,7 +896,8 @@ apiRouter.post('/agent/react/run', async (req: Request, res: Response) => {
       author: '本地开发者 (ReAct Agent)',
       workedTime: result.workedTime,
       timestamp: result.timestamp,
-      status: result.aborted ? 'failed' : 'changes_ready',
+      status: result.aborted || !result.success ? 'needs_attention' : 'changes_ready',
+      testing: result.projectTesting,
       agentSummary: {
         commit: result.commitHash,
         bulletPoints: result.bulletPoints,
@@ -799,6 +920,7 @@ apiRouter.post('/agent/react/run', async (req: Request, res: Response) => {
     };
     tasksList.unshift(newTaskItem);
     defaultSqliteStorage.saveTask(newTaskItem);
+    defaultReactStreamer.broadcast(sessionId, 'finish', { text: result.message });
   }).catch(err => {
     defaultReactStreamer.broadcast(sessionId, 'error', { error: err.message });
   });

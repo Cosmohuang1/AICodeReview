@@ -94,6 +94,25 @@ describe('multi-language project test discovery', () => {
     expect(report.executions[0].status).toBe('inconclusive');
   }, 20000);
 
+
+  it('emits project test stdout while the process is still running and then reports exit', async () => {
+    const root = temp();
+    root.put('package.json', JSON.stringify({
+      scripts: { test: 'node -e "process.stdout.write(\'first-chunk\\n\'); setTimeout(() => console.log(\'Tests  2 passed (2)\'), 75)"' }
+    }));
+    const events: Array<{ phase: string; chunk?: string; result?: { exitCode: number | null } }> = [];
+    const report = await verifyProjectTests(
+      root.cwd, detectProjectTests(root.cwd), true, 20000,
+      event => events.push({ phase: event.phase, chunk: event.chunk, result: event.result })
+    );
+    expect(report.status).toBe('passed');
+    const first = events.findIndex(e => e.phase === 'start');
+    const middle = events.findIndex(e => e.phase === 'output' && e.chunk?.includes('first-chunk'));
+    const last = events.findIndex(e => e.phase === 'finish' && e.result?.exitCode === 0);
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(middle).toBeGreaterThan(first);
+    expect(last).toBeGreaterThan(middle);
+  }, 30000);
   it('records an actual failing process without claiming unrun tests passed', async () => {
     const root = temp();
     root.put('package.json', JSON.stringify({

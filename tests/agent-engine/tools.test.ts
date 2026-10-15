@@ -127,6 +127,20 @@ describe('Agent Toolbox (原子工具箱)', () => {
     });
   });
 
+
+  describe('live command output', () => {
+    it('forwards stdout/stderr before command completion with the actual exit code', async () => {
+      const chunks: Array<{ stream: string; chunk: string }> = [];
+      const res = await runCommandTool(tmpDir, {
+        command: 'node -e "process.stdout.write(\'compile-start\\n\'); setTimeout(() => { console.error(\'compile-error\'); process.exit(3); }, 80)"'
+      }, { onOutput: (stream, chunk) => chunks.push({ stream, chunk }) });
+      expect(res.success).toBe(false);
+      expect(res.exitCode).toBe(3);
+      expect(res.durationMs).toBeGreaterThan(0);
+      expect(chunks.some(item => item.stream === 'stdout' && item.chunk.includes('compile-start'))).toBe(true);
+      expect(chunks.some(item => item.stream === 'stderr' && item.chunk.includes('compile-error'))).toBe(true);
+    });
+  });
   describe('search_code', () => {
     it('在目录下递归搜索匹配行', async () => {
       const f1 = path.join(tmpDir, 'a.ts');

@@ -33,6 +33,15 @@ export interface TestExecution {
   reason: string;
 }
 
+export interface TestProgressEvent {
+  phase: 'start' | 'output' | 'finish';
+  project: DetectedProject;
+  command: string;
+  stream?: 'stdout' | 'stderr';
+  chunk?: string;
+  result?: TestExecution;
+}
+
 export interface ProjectTestReport {
   status: 'passed' | 'failed' | 'partial' | 'not-run' | 'no-tests';
   approved: boolean;
@@ -126,7 +135,7 @@ export function detectProjectTests(root: string, changedFiles: string[] = []): P
         kind: 'dotnet', directory, manifests: solutions,
         readiness: solutions.length === 1 ? 'ready' : 'not-configured',
         command: solutions.length === 1 ? {
-          executable: 'dotnet', args: ['test', solutions[0], '--no-restore', '--nologo']
+          executable: 'dotnet', args: ['test', solutions[0], '--no-restore', '--nologo', '--verbosity', 'normal', '--logger', 'console;verbosity=normal']
         } : undefined,
         note: solutions.length === 1 ? 'dotnet solution test; requires previously restored dependencies' :
           'Multiple solutions; choose a test target explicitly'
@@ -138,7 +147,7 @@ export function detectProjectTests(root: string, changedFiles: string[] = []): P
         add({
           kind: 'dotnet', directory, manifests: [proj],
           readiness: isTest ? 'ready' : 'not-configured',
-          command: isTest ? { executable: 'dotnet', args: ['test', proj, '--no-restore', '--nologo'] } : undefined,
+          command: isTest ? { executable: 'dotnet', args: ['test', proj, '--no-restore', '--nologo', '--verbosity', 'normal', '--logger', 'console;verbosity=normal'] } : undefined,
           note: isTest ? 'Detected .NET test project (no automatic restore)' :
             'C# project found, but no test SDK or test-project marker identified'
         });
@@ -222,8 +231,12 @@ function getCounts(output: string): { passed: number | null; failed: number | nu
 
 /** Explicitly approved test execution. Never auto-install or execute model-supplied shell text. */
 export async function verifyProjectTests(
-  root: string, detection: ProjectDetection, approved: boolean, timeoutMs = 90_000
+  root: string, detection: ProjectDetection, approved: boolean, timeoutMs = 90_000,
+  onProgress?: (event: TestProgressEvent) => void
 ): Promise<ProjectTestReport> {
+  const emit = (event: TestProgressEvent) => {
+    try { onProgress?.(event); } catch { /* UI errors must not abort tests */ }
+  };
   const warnings = [...detection.warnings];
   if (!approved) return {
     status: 'not-run', approved: false, projects: detection.projects, executions: [],
@@ -239,8 +252,10 @@ export async function verifyProjectTests(
     const started = Date.now();
     const command = project.command!;
     const cwd = project.directory === '.' ? path.resolve(root) : path.resolve(root, project.directory);
+    const commandText = [command.executable, ...command.args].join(' ');
+    emit({ phase: 'start', project, command: commandText });
     const result = await new Promise<TestExecution>(resolve => {
-      execFile(command.executable, command.args, {
+      const child = execFile(command.executable, command.args, {
         cwd, shell: false,
         timeout: Math.max(1000, Math.min(timeoutMs, 180_000)),
         maxBuffer: 2 * 1024 * 1024, windowsHide: true
@@ -261,12 +276,34 @@ export async function verifyProjectTests(
             'Test runner exited successfully and reported passing tests' :
             'Command exited successfully, but no executed test cases could be verified from its output' :
             'Test runner exited unsuccessfully; check logs and dependencies';
-        resolve({
+        const result: TestExecution = {
           project, status, exitCode, durationMs: Date.now() - started,
           observedPassed: observed.passed, observedFailed: observed.failed,
           outputSnippet: combined.trim().slice(-8000), reason
-        });
+        };
+        emit({ phase: 'finish', project, command: commandText, result });
+        resolve(result);
       });
+      // execFile runs without a shell and buffers for the summary. Its pipes
+      // also provide real-time output before the callback is invoked.
+      let sentBytes = 0;
+      let limited = false;
+      for (const stream of ['stdout', 'stderr'] as const) {
+        child[stream]?.on('data', (data: Buffer | string) => {
+          if (!onProgress) return;
+          const chunk = String(data);
+          const room = Math.max(0, 256 * 1024 - sentBytes);
+          if (room > 0) {
+            const allowed = chunk.slice(0, room);
+            sentBytes += allowed.length;
+            emit({ phase: 'output', project, command: commandText, stream, chunk: allowed });
+          } else if (!limited) {
+            limited = true;
+            emit({ phase: 'output', project, command: commandText, stream,
+              chunk: '\n[超过 256KB 的实时日志未继续显示；测试仍在运行]\n' });
+          }
+        });
+      }
     });
     executions.push(result);
   }

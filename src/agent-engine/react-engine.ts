@@ -193,13 +193,21 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
         });
 
         // 真实执行工具
-        const toolResult = await executeAgentTool(cwd, funcName, funcArgs);
+        const toolResult = await executeAgentTool(cwd, funcName, funcArgs, {
+          signal: abortSignal,
+          onOutput: (stream, chunk) => streamer.broadcast(sessionId, 'tool_output', {
+            callId: call.id, name: funcName, stream, chunk
+          })
+        });
         if (funcName === 'edit_file' && toolResult.success) editedSuccessfully = true;
 
         streamer.broadcast(sessionId, 'tool_result', {
           callId: call.id,
           name: funcName,
           success: toolResult.success,
+          exitCode: toolResult.exitCode,
+          durationMs: toolResult.durationMs,
+          timedOut: toolResult.timedOut,
           output: toolResult.output,
         });
 
@@ -270,7 +278,31 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
   const projectTesting = await verifyProjectTests(
     cwd,
     editedSuccessfully ? detectProjectTests(cwd, updatedStatus.changedFiles.map(f => f.path)) : detectedTests,
-    editedSuccessfully && params.runTests !== false
+    editedSuccessfully && params.runTests !== false,
+    90_000,
+    event => {
+      const callId = 'project-test:' + event.project.kind + ':' + event.project.directory;
+      if (event.phase === 'start') {
+        streamer.broadcast(sessionId, 'tool_call', {
+          callId, name: 'project-test', args: { command: event.command }
+        });
+      } else if (event.phase === 'output') {
+        streamer.broadcast(sessionId, 'tool_output', {
+          callId, name: 'project-test', stream: event.stream, chunk: event.chunk
+        });
+      } else if (event.result) {
+        streamer.broadcast(sessionId, 'tool_result', {
+          callId, name: 'project-test',
+          success: event.result.status === 'passed',
+          status: event.result.status,
+          exitCode: event.result.exitCode,
+          durationMs: event.result.durationMs,
+          observedPassed: event.result.observedPassed,
+          observedFailed: event.result.observedFailed,
+          output: event.result.outputSnippet || event.result.reason
+        });
+      }
+    }
   );
   const regressionStatus = !editedSuccessfully
     ? '未执行测试（本次没有成功修改文件）'
@@ -303,7 +335,7 @@ export async function runReactEngine(params: ReactEngineParams): Promise<ReactEn
   }
   const finalReportedMessage = (finalMessage || (isAborted ? '任务已被用户中止。' :
     '执行达到当前步数限制或未提供最终回复。')) + '\n\n【真实项目测试】' + regressionStatus;
-  if (!isAborted) streamer.broadcast(sessionId, 'finish', { text: finalReportedMessage });
+  // The API broadcasts finish after persisting the completed task and logs.
 
 
   const taskId = `task_${Date.now()}`;
