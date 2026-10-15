@@ -186,7 +186,7 @@ export function registerLocalReviewCommand(program: Command): void {
           file => !review!.analyzedFiles.some(analyzed => analyzed.filePath === file)
         ) : [];
         // Legacy Agents cannot yet report execution completeness.
-        const partial = Boolean(review) || filesSkipped.length > 0 ||
+        const partial = Boolean(review && (review.agentCompletion !== 'complete' || review.summaryFailed)) || filesSkipped.length > 0 ||
           Boolean(browser && ['partial', 'skipped'].includes(browser.status)) || Boolean(impact?.truncated);
         const hasFindings = findings.some(f => f.severity === 'error') || browser?.status === 'failed';
 
@@ -204,7 +204,9 @@ export function registerLocalReviewCommand(program: Command): void {
           review: review ? {
             analyzedFiles: review.analyzedFiles.map(f => f.filePath),
             findings, summary: review.summary,
-            executionCompleteness: 'unknown',
+            executionCompleteness: review.agentCompletion ?? 'unknown',
+            agentFailures: review.agentFailures ?? [],
+            summaryFailed: review.summaryFailed ?? false,
             filesSkipped
           } : { skipped: true },
           browser,
@@ -215,10 +217,15 @@ export function registerLocalReviewCommand(program: Command): void {
           ? buildPRBody(review.summary, '# Local Code Review', reviewConfig.language) + '\n' +
             (review.comments.length ? '\n## Review Findings\n\n' + review.comments.map(c =>
               '### ' + c.file + ':' + c.line + '\n\n' + buildInlineCommentBody(c)).join('\n\n')
-              : '\nNo findings returned from completed review steps. Agent completeness is currently unknown.\n')
+              : '\nNo findings returned by completed steps. See the JSON agentCompletion field before treating this as a clean review.\n')
           : '# Local Browser Verification\n\nDeepSeek review skipped.\n';
 
-        writeFileSync(output, reviewMd + browserMarkdown(browser) +
+        writeFileSync(output, reviewMd + (review ? '\n\n### Agent health\n\n' +
+          'Execution: ' + (review.agentCompletion ?? 'unknown') +
+          (review.agentFailures?.length ? '\n' + review.agentFailures.map(e =>
+            '- ' + e.agent + ' (' + e.file + '): ' + e.message).join('\n') : '') +
+          (review.summaryFailed ? '\nSummary generation failed.' : '') + '\n' : '') +
+          browserMarkdown(browser) +
           (comparison ? '\n## Baseline comparison (potential regressions, not proof)\n\n' +
             comparison.map(item => '- ' + item.scenarioId + ': ' + item.assessment + ' (' + item.note + ')').join('\n') : ''), 'utf8');
         const htmlPath = path.join(outputDir, 'report.html');
