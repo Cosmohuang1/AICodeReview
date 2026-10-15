@@ -4,7 +4,7 @@ This feature extends the existing ReviewService instead of replacing the six-age
 
 ## Prerequisites
 
-- Node.js 20+ and Git.
+- Node.js 22+ and Git.
 - npm ci
 - npx playwright install chromium
 - A local HTTP(S) application serving on 127.0.0.1 or localhost.
