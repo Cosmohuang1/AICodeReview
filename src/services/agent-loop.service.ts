@@ -147,7 +147,9 @@ export class AgentLoopService {
       try {
         testResult = await this.testRunner.runTestSuite(cwd, params.testCmd);
         regressionStatus = testResult.success
-          ? '指定测试命令退出 0；是否执行用例以日志为准'
+          ? testResult.passed > 0
+            ? '已观察到 ' + testResult.passed + ' 个测试通过；详细以真实日志为准'
+            : '指定测试命令退出 0，但未观察到通过用例；结果仍需确认'
           : '指定测试命令失败，退出码 ' + testResult.exitCode;
       } catch (error) {
         regressionStatus = '指定测试命令执行受阻：' + String(error);

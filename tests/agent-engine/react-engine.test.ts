@@ -84,7 +84,11 @@ describe('ReactEngine (自主 ReAct 自愈循环引擎)', () => {
       llmCaller: mockLlm
     });
 
-    expect(result.success).toBe(true);
+    // No project test manifest exists in this fixture. Editing works but
+    // success must not be reported until a real regression test has passed.
+    expect(result.success).toBe(false);
+    expect(result.regressionStatus).toMatch(/找不到可运行的项目测试/);
+    expect(result.projectTesting?.status).toBe('no-tests');
     expect(mockLlm).toHaveBeenCalledTimes(2);
     const updated = fs.readFileSync(codeFile, 'utf-8');
     expect(updated).toContain('return a + b;');
