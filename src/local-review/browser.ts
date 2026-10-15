@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Browser, BrowserContext, Locator, Page } from 'playwright';
@@ -126,6 +127,7 @@ async function connectBrowser(config: BrowserConfig, options: { approveCDP: bool
   try {
     const context = await browser.newContext({
       acceptDownloads: false,
+      serviceWorkers: 'block',
       viewport: { width: 1280, height: 800 }
     });
     const page = await context.newPage();
@@ -177,19 +179,32 @@ async function executeScenario(scenario: TestScenario, config: BrowserConfig, op
   let session: BrowserSession | undefined;
   let status: ScenarioResult['status'] = 'passed';
   let traceStarted = false;
-  const safeName = scenario.id.replace(/[^a-z0-9_-]/gi, '_').slice(0, 64);
+  const safeName = scenario.id.replace(/[^a-z0-9_-]/gi, '_').slice(0, 48) + '-' +
+    createHash('sha256').update(scenario.id).digest('hex').slice(0, 8);
   try {
     session = await connectBrowser(config, options);
     const page = session.page;
     page.on('pageerror', error => { messages.push('Page error: ' + error.message.slice(0, 300)); });
     page.on('popup', popup => { void popup.close().catch(() => {}); });
-    await page.route('**/*', route => {
+    const requestRouter = config.connection.mode === 'isolated' ? session.context : page;
+    await requestRouter.route('**/*', route => {
       try {
         const url = new URL(route.request().url());
         if (!allowed.has(url.origin)) { void route.abort(); return; }
       } catch { void route.abort(); return; }
-      void route.continue();
+      void route.continue().catch(() => {});
     });
+    if (config.connection.mode === 'isolated') {
+      await session.context.routeWebSocket('**/*', ws => {
+        try {
+          const url = new URL(ws.url());
+          if (url.protocol === 'ws:') url.protocol = 'http:';
+          if (url.protocol === 'wss:') url.protocol = 'https:';
+          if (allowed.has(url.origin)) { ws.connectToServer(); return; }
+        } catch { /* invalid WebSocket URL */ }
+        ws.close();
+      });
+    }
     // A new scenario gets a fresh isolated context unless an explicitly authorized CDP session is used.
     if (config.connection.mode === 'isolated') {
       await session.context.tracing.start({ screenshots: true, snapshots: true });
