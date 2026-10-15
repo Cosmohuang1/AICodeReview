@@ -479,20 +479,20 @@
         <!-- CodeRabbit 风格：智能审查建议与 Now vs Next 分流看板 -->
         <div id="detailPrioritizeSection" class="space-y-4 pt-1"></div>
 
-        <!-- 修改文件卡片 -->
-        <div class="border border-zinc-200 rounded-xl bg-white shadow-2xs overflow-hidden">
-          <div class="px-4 py-3 bg-[#fafafa] border-b border-zinc-200 flex items-center justify-between">
+        <!-- 变更文件卡片 (有文件时展示，默认折叠，无文件或运行中自动隐藏) -->
+        <div id="detailEditedFilesCard" class="hidden border border-zinc-200 rounded-xl bg-white shadow-2xs overflow-hidden">
+          <div class="px-4 py-3 bg-[#fafafa] border-b border-zinc-200 flex items-center justify-between cursor-pointer select-none hover:bg-zinc-100/70 transition-colors" onclick="toggleEditedFilesCollapse()">
             <div class="flex items-center gap-2">
               <i data-lucide="file-text" class="w-4 h-4 text-zinc-500"></i>
-              <span id="detailEditedFilesHeader" class="font-semibold text-xs text-zinc-900">修改的文件</span>
+              <span id="detailEditedFilesHeader" class="font-semibold text-xs text-zinc-900">变更文件清单</span>
               <span class="text-[11px] font-mono">
                 <span class="text-emerald-600 font-semibold" id="detailTotalAdditions">+0</span>
                 <span class="text-red-500 font-semibold" id="detailTotalDeletions">-0</span>
               </span>
             </div>
-            <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400"></i>
+            <i data-lucide="chevron-down" id="editedFilesChev" class="w-4 h-4 text-zinc-400 transition-transform"></i>
           </div>
-          <div id="detailFilesList" class="divide-y divide-zinc-100 text-xs font-mono"></div>
+          <div id="detailFilesList" class="hidden divide-y divide-zinc-100 text-xs font-mono"></div>
         </div>
 
         <!-- 对话追加流 (后续问答与指令) -->
@@ -1544,6 +1544,17 @@
       lucide.createIcons();
     }
 
+    function toggleEditedFilesCollapse() {
+      const list = document.getElementById('detailFilesList');
+      const chev = document.getElementById('editedFilesChev');
+      if (!list) return;
+      list.classList.toggle('hidden');
+      if (chev) {
+        chev.style.transform = list.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+      }
+      lucide.createIcons();
+    }
+
     function toggleCommandGroup(groupId) {
       const content = document.getElementById('content_' + groupId);
       const chev = document.getElementById('chev_' + groupId);
@@ -1633,6 +1644,14 @@
       if (!container) return;
       liveCommandGroups = [];
       currentLiveGroupId = null;
+
+      // 实时审查进行中，彻底隐藏底部的静态/历史卡片，防止展示未就绪的空白或“无修改文件”
+      const filesCard = document.getElementById('detailEditedFilesCard');
+      if (filesCard) filesCard.classList.add('hidden');
+      const priorSec = document.getElementById('detailPrioritizeSection');
+      if (priorSec) priorSec.innerHTML = '';
+      const archSumm = document.getElementById('detailArchitecturalSummary');
+      if (archSumm) archSumm.innerHTML = '';
 
       container.innerHTML = `
         <!-- 1. Workspace setup 抽屉 -->
@@ -2593,33 +2612,37 @@
         bpList.appendChild(li);
       });
 
+      const filesCard = document.getElementById('detailEditedFilesCard');
       const filesHeader = document.getElementById('detailEditedFilesHeader');
-      const filesCount = (task.editedFiles || []).length;
-      filesHeader.textContent = filesCount > 0 ? `修改了 ${filesCount} 个文件` : '无修改文件';
-      document.getElementById('detailTotalAdditions').textContent = `+${task.totalAdditions ?? 0}`;
-      document.getElementById('detailTotalDeletions').textContent = `-${task.totalDeletions ?? 0}`;
-
       const filesList = document.getElementById('detailFilesList');
-      filesList.innerHTML = '';
+      const files = task.editedFiles || [];
+      const filesCount = files.length;
+
       if (filesCount === 0) {
-        const emptyRow = document.createElement('div');
-        emptyRow.className = 'px-4 py-3 text-zinc-400 text-xs italic';
-        emptyRow.textContent = '当前工作区无未提交的文件变动';
-        filesList.appendChild(emptyRow);
+        // 无修改文件时彻底隐藏，绝不展示冗余卡片
+        if (filesCard) filesCard.classList.add('hidden');
       } else {
-        (task.editedFiles || []).forEach(f => {
-          const row = document.createElement('div');
-          row.className = 'px-4 py-2 flex items-center justify-between hover:bg-zinc-50 transition-colors cursor-pointer';
-          row.innerHTML = `
-            <span class="truncate text-zinc-700 font-mono pr-2">${f.path}</span>
-            <span class="shrink-0 font-medium">
-              <span class="text-emerald-600">+${f.additions}</span>
-              <span class="text-red-500 ml-1">-${f.deletions}</span>
-            </span>
-          `;
-          row.onclick = () => previewRawDiffModal(f.path);
-          filesList.appendChild(row);
-        });
+        if (filesCard) filesCard.classList.remove('hidden');
+        if (filesHeader) filesHeader.textContent = `变更文件清单 (${filesCount} 个文件)`;
+        document.getElementById('detailTotalAdditions').textContent = `+${task.totalAdditions ?? 0}`;
+        document.getElementById('detailTotalDeletions').textContent = `-${task.totalDeletions ?? 0}`;
+
+        if (filesList) {
+          filesList.innerHTML = '';
+          files.forEach(f => {
+            const row = document.createElement('div');
+            row.className = 'px-4 py-2 flex items-center justify-between hover:bg-zinc-50 transition-colors cursor-pointer';
+            row.innerHTML = `
+              <span class="truncate text-zinc-700 font-mono pr-2">${f.path}</span>
+              <span class="shrink-0 font-medium">
+                <span class="text-emerald-600">+${f.additions}</span>
+                <span class="text-red-500 ml-1">-${f.deletions}</span>
+              </span>
+            `;
+            row.onclick = () => previewRawDiffModal(f.path);
+            filesList.appendChild(row);
+          });
+        }
       }
 
       renderArchitecturalSummary(task);
