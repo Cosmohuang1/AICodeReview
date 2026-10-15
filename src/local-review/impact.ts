@@ -138,7 +138,7 @@ function reactRouterScreens(root: string, file: string, options: ts.CompilerOpti
   };
   const attribute = (jsx: ts.JsxOpeningLikeElement, key: string): ts.JsxAttribute | undefined =>
     jsx.attributes.properties.find((a): a is ts.JsxAttribute =>
-      ts.isJsxAttribute(a) && a.name.text === key);
+      ts.isJsxAttribute(a) && a.name.getText(ast) === key);
   const extractObject = (node: ts.Node) => {
     if (ts.isObjectLiteralExpression(node)) {
       let route: string | undefined, symbol: string | undefined;
