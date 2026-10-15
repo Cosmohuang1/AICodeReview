@@ -3,6 +3,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import path from 'node:path';
 import { webhookHandler } from './webhook.handler.js';
 import { apiRouter } from './api.routes.js';
+import { localReviewRouter } from './local-review.routes.js';
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use(express.json());
 
 // API 路由
 app.use('/api', apiRouter);
+app.use('/api/local-review', localReviewRouter);
 
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', version: '0.1.0' });

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICodeReview · 本地浏览器验证</title>
+<style>
+body{font:15px system-ui,sans-serif;background:#f6f8fc;color:#17243a;max-width:900px;margin:40px auto;padding:0 24px}
+main,section{background:#fff;border:1px solid #dfe6f0;border-radius:16px;padding:24px;margin-bottom:20px}
+h1,h2{margin-top:0}label{display:block;margin-top:12px;font-weight:600}input,select,button{font:inherit;padding:10px;border:1px solid #a9b5c9;border-radius:8px}
+input{width:min(100%,520px);box-sizing:border-box}button{margin-top:16px;background:#264c9c;color:white;border:0;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef2f9;padding:14px;border-radius:8px}
+small{color:#58657c}li{padding:5px 0}
+</style>
+</head>
+<body>
+<main>
+<h1>本地浏览器验证</h1>
+<p>对当前项目的 Git 修改进行影响分析，用隔离 Chromium 验证相关路由。仅允许本机调用，需在服务端启用并配置访问令牌。</p>
+<small>不会自动启动脚本、连接现有 Chrome 或运行有写入副作用的测试。详情见 docs/local-browser-review.md。</small>
+<form id="runForm">
+<label for="token">本地 API Token（仅在当前页面内存中使用）</label>
+<input id="token" type="password" autocomplete="off" required minlength="24">
+<label for="scope">代码范围</label>
+<select id="scope"><option value="working">未提交变更</option><option value="staged">已暂存</option><option value="last">最近提交</option></select>
+<div><button id="submit" type="submit">分析影响并验证浏览器</button></div>
+</form>
+</main>
+<section id="results" hidden>
+<h2>执行结果</h2>
+<p id="status" aria-live="polite"></p>
+<h3>受影响路由</h3><ul id="routes"></ul>
+<h3>浏览器场景</h3><ul id="scenarios"></ul>
+<h3>警告与限制</h3><ul id="warnings"></ul>
+</section>
+<script>
+const form=document.getElementById('runForm'), button=document.getElementById('submit');
+function item(list,text){const li=document.createElement('li');li.textContent=text;list.appendChild(li);}
+function clear(list){list.replaceChildren();}
+form.addEventListener('submit',async event=>{
+  event.preventDefault();button.disabled=true;
+  const result=document.getElementById('results');result.hidden=false;
+  const status=document.getElementById('status');
+  const routes=document.getElementById('routes'),scenarios=document.getElementById('scenarios'),warnings=document.getElementById('warnings');
+  [routes,scenarios,warnings].forEach(clear);status.textContent='浏览器验证执行中…';
+  try {
+    const response=await fetch('/api/local-review/verify',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Local-Review-Token':document.getElementById('token').value},
+      body:JSON.stringify({scope:document.getElementById('scope').value})
+    });
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error||'HTTP '+response.status);
+    const payload=data.result;
+    status.textContent='Run '+payload.id+' · '+payload.browser.status+' · 已执行 '+payload.browser.executed+'/'+payload.browser.planned;
+    for(const route of payload.impact.routes)item(routes,route.route+' ← '+route.sourceFiles.join(', '));
+    for(const scenario of payload.browser.scenarios)item(scenarios,scenario.id+' ('+scenario.route+') → '+scenario.status+'; '+scenario.messages.join('; '));
+    for(const warning of [...payload.impact.warnings,...payload.browser.warnings])item(warnings,warning);
+    for(const f of payload.browser.unmappedFiles)item(warnings,'未映射文件: '+f);
+  }catch(error){status.textContent='验证未完成：'+error.message;}
+  finally{button.disabled=false;}
+});
+</script>
+</body></html>
