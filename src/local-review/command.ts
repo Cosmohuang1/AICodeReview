@@ -1,10 +1,14 @@
 import type { Command } from 'commander';
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectGitChanges } from './git.js';
 import { loadBrowserConfig, planAffectedScenarios } from './config.js';
 import { runBrowserVerification } from './browser.js';
+import { analyzeImpact, type ImpactAnalysis } from './impact.js';
+import { proposeReadOnlyScenarios } from './ai-planner.js';
+import { linkReviewEvidence } from './evidence.js';
+import { renderLocalReviewHTML } from './html.js';
 import { loadRepoConfig } from '../config/loader.js';
 import { ReviewService } from '../services/review.service.js';
 import { buildPRBody, buildInlineCommentBody } from '../reporter/markdown.reporter.js';
@@ -57,7 +61,8 @@ export function registerLocalReviewCommand(program: Command): void {
     .option('--base <git-ref>', 'branch comparison baseline (merge-base)')
     .option('--include-untracked', 'include untracked text files (max 256 KB each)')
     .option('--browser', 'verify impacted routes using Playwright')
-    .option('--browser-only', 'skip DeepSeek and run only browser verification')
+    .option('--browser-only', 'skip DeepSeek code review and run browser verification')
+    .option('--ai-tests', 'opt into read-only AI-proposed UI test scenarios')
     .option('--url <url>', 'local application base URL')
     .option('--server-mode <mode>', 'existing | managed')
     .option('--browser-connection <mode>', 'isolated | cdp')
@@ -68,7 +73,7 @@ export function registerLocalReviewCommand(program: Command): void {
     .option('-o, --output <path>', 'Markdown report path')
     .action(async (options: {
       scope: GitScope; base?: string; includeUntracked?: boolean;
-      browser?: boolean; browserOnly?: boolean; url?: string;
+      browser?: boolean; browserOnly?: boolean; aiTests?: boolean; url?: string;
       serverMode?: 'existing' | 'managed'; browserConnection?: 'isolated' | 'cdp';
       cdpEndpoint?: string; approveServerStart?: boolean; approveCdp?: boolean;
       config: string; output?: string;
@@ -114,39 +119,65 @@ export function registerLocalReviewCommand(program: Command): void {
         }
 
         let browser: BrowserVerificationResult | null = null;
-        if (options.browser || options.browserOnly) {
-          const plan = planAffectedScenarios(changes.files, browserConfig);
+        let impact: ImpactAnalysis | null = null;
+        let aiRationales: Record<string, string> = {};
+        const browserEnabled = options.browser || options.browserOnly || options.aiTests;
+        if (browserEnabled) {
+          impact = analyzeImpact(cwd, changes.files, browserConfig);
+          const explicitAndInferred = { ...browserConfig, mappings: impact.mappings };
+          const plan = planAffectedScenarios(changes.files, explicitAndInferred);
+          const planned = [...plan.scenarios];
+          const warnings = [...plan.warnings, ...impact.warnings];
+          if (options.aiTests || browserConfig.aiPlanning.enabled) {
+            if (!process.env.DEEPSEEK_API_KEY) {
+              warnings.push('AI planning skipped: DEEPSEEK_API_KEY not configured.');
+            } else {
+              const ai = await proposeReadOnlyScenarios({
+                routes: impact.routes,
+                diff: changes.rawDiff,
+                remainingBudget: Math.min(browserConfig.aiPlanning.maxScenarios,
+                  Math.max(0, browserConfig.maxScenarios - planned.length))
+              });
+              planned.push(...ai.scenarios);
+              warnings.push(...ai.warnings);
+              aiRationales = ai.rationales;
+            }
+          }
+          writeFileSync(path.join(outputDir, 'test-plan.json'), JSON.stringify(
+            planned.map(scenario => ({
+              ...scenario,
+              actions: scenario.actions.map(action =>
+                action.type === 'fill' ? { ...action, value: '[REDACTED]' } : action)
+            })), null, 2), 'utf8');
           browser = await runBrowserVerification({
             cwd, config: browserConfig, baseURL: browserConfig.baseURL,
-            scenarios: plan.scenarios, unmappedFiles: plan.unmappedFiles,
-            warnings: plan.warnings, artifactDir: path.join(outputDir, 'artifacts'),
+            scenarios: planned, unmappedFiles: plan.unmappedFiles,
+            warnings, artifactDir: path.join(outputDir, 'artifacts'),
             approveServerStart: Boolean(options.approveServerStart),
             approveCDP: Boolean(options.approveCdp), endpoint: options.cdpEndpoint
           });
         }
 
-        const findings = review?.comments.map(comment => ({
-          id: createHash('sha256').update(
-            [comment.file, comment.line, comment.category, comment.message].join(':')
-          ).digest('hex').slice(0, 16),
-          location: { file: comment.file, line: comment.line },
-          severity: comment.severity, category: comment.category,
-          explanation: comment.message, suggestion: comment.suggestion,
-          verification: { status: 'unverified', evidenceIds: [] as string[] }
-        })) ?? [];
+        const linked = linkReviewEvidence(review?.comments ?? [], browser);
+        const findings = linked.findings;
 
         const filesSkipped = review ? changes.files.filter(
           file => !review!.analyzedFiles.some(analyzed => analyzed.filePath === file)
         ) : [];
         // Legacy Agents cannot yet report execution completeness.
         const partial = Boolean(review) || filesSkipped.length > 0 ||
-          Boolean(browser && ['partial', 'skipped'].includes(browser.status));
+          Boolean(browser && ['partial', 'skipped'].includes(browser.status)) || Boolean(impact?.truncated);
         const hasFindings = findings.some(f => f.severity === 'error') || browser?.status === 'failed';
 
         const report = {
           schemaVersion: 1, runId, startedAt: new Date(started).toISOString(),
           durationMs: Date.now() - started,
           git: { ...changes, rawDiff: undefined },
+          impact: impact ? { routes: impact.routes, scannedFiles: impact.scannedFiles,
+            truncated: impact.truncated, warnings: impact.warnings } : null,
+          evidence: linked.evidence,
+          unattributedFailures: linked.unattributedFailures,
+          aiTestRationales: aiRationales,
           review: review ? {
             analyzedFiles: review.analyzedFiles.map(f => f.filePath),
             findings, summary: review.summary,
@@ -165,9 +196,14 @@ export function registerLocalReviewCommand(program: Command): void {
           : '# Local Browser Verification\n\nDeepSeek review skipped.\n';
 
         writeFileSync(output, reviewMd + browserMarkdown(browser), 'utf8');
+        const htmlPath = path.join(outputDir, 'report.html');
+        writeFileSync(htmlPath, renderLocalReviewHTML({
+          runId, status: report.status, head: changes.head, impact, browser,
+          findings, evidence: linked.evidence, reportDir: outputDir
+        }), 'utf8');
         const jsonPath = path.join(outputDir, 'report.json');
         writeFileSync(jsonPath, JSON.stringify(report, null, 2), 'utf8');
-        console.log('Review status: ' + report.status + '\nMarkdown: ' + output + '\nJSON: ' + jsonPath);
+        console.log('Review status: ' + report.status + '\nMarkdown: ' + output + '\nJSON: ' + jsonPath + '\nHTML: ' + htmlPath);
 
         if (hasFindings) process.exitCode = 1;
         else if (partial) process.exitCode = 3;
