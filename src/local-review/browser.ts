@@ -102,12 +102,12 @@ function safeURL(base: string, route: string): string {
   if (url.origin !== new URL(base).origin) throw new Error('Cross-origin route refused');
   return url.href;
 }
-function getLocator(page: any, target: z.infer<typeof target>): any {
-  switch (target.by) {
-    case 'role': return page.getByRole(target.value, target.name ? { name: target.name } : {});
-    case 'label': return page.getByLabel(target.value);
-    case 'text': return page.getByText(target.value);
-    case 'testId': return page.getByTestId(target.value);
+function getLocator(page: any, element: z.infer<typeof target>): any {
+  switch (element.by) {
+    case 'role': return page.getByRole(element.value, element.name ? { name: element.name } : {});
+    case 'label': return page.getByLabel(element.value);
+    case 'text': return page.getByText(element.value);
+    case 'testId': return page.getByTestId(element.value);
   }
 }
 async function applyAction(page: any, item: Action, base: string, timeout: number) {
