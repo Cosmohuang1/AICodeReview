@@ -291,3 +291,46 @@ ai-review/
 ## 📄 许可说明
 
 本项目遵循 [MIT License](LICENSE) 开源协议。
+
+
+## 本地浏览器验证 MVP（实验性）
+
+新命令 `ai-review review` 与原有 `ai-review diff` 共存。默认仅审查本地 Git 变更；添加 `--browser` 后会根据 `.ai-review.yml` 中的显式路由映射执行 Playwright 浏览器验证。
+
+```bash
+# 启用浏览器功能前安装可选运行时（首次还需安装 Chromium）
+npm install playwright
+npx playwright install chromium
+
+# 代码审查（需要 DEEPSEEK_API_KEY）
+npm run review -- review --scope working
+
+# 只验证本地 Web 服务，不调用 LLM
+npm run review -- review --browser-only --url http://127.0.0.1:3000
+
+# 完整 Review + 浏览器验证
+npm run review -- review --browser --url http://127.0.0.1:3000
+
+# 对比 main 分支
+npm run review -- review --base main --browser
+```
+
+配置示例（合并到已有 `.ai-review.yml`）：
+
+```yaml
+browser:
+  baseURL: http://127.0.0.1:3000
+  maxScenarios: 5
+  mappings:
+    - files: ['src/app/login/**', 'src/components/LoginForm.tsx']
+      route: /login
+      scenarios:
+        - id: login-visible
+          actions:
+            - type: goto
+              path: /login
+            - type: assertVisible
+              target: { by: role, value: button, name: Login }
+```
+
+若映射未提供 `scenarios`，只进行 URL 冒烟测试，不判断业务逻辑是否正确。浏览器仅允许访问明确配置的本地 loopback Origin，并使用独立 Chromium Context；不会自动启动服务、连接日常 Chrome、执行任意页面脚本。此版本不支持自动启动及 CDP，预留在后续版本。报告写入 `.ai-review/runs/<run-id>/report.md` 和 `report.json`，失败时附带截图及 Playwright Trace。浏览器测试结果不会未经归因就自动确认为具体代码行的 Bug；旧 Agent 的运行完整性暂标记为 `unknown`。

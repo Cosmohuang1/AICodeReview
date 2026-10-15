@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import 'dotenv/config';
 import { Command } from 'commander';
+import { registerLocalReviewCommand } from './local-review/command.js';
 import chalk from 'chalk';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -156,5 +157,7 @@ program
       process.exit(1);
     }
   });
+
+registerLocalReviewCommand(program);
 
 program.parse(process.argv);
