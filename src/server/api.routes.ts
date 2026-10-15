@@ -433,7 +433,7 @@ apiRouter.post('/verification/test-run', async (req: Request, res: Response) => 
     const hasPackageJson = fs.existsSync(path.join(targetCwd, 'package.json'));
     const cmd = req.body.cmd || (hasPackageJson ? 'npm test' : 'dotnet test');
     const result = await testRunnerService.runTestSuite(targetCwd, cmd);
-    res.json({ success: true, ...result });
+    res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
