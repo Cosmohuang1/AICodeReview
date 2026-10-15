@@ -28,6 +28,10 @@ const browserSchema = z.object({
   healthPath: z.string().startsWith('/').default('/'),
   allowedOrigins: z.array(z.string().url()).optional(),
   mappings: z.array(mappingSchema).default([]),
+  dependencyRules: z.array(z.object({
+    dependencies: z.array(z.string().min(1)).min(1),
+    consumers: z.array(z.string().min(1)).min(1)
+  })).max(100).default([]),
   server: z.object({
     mode: z.enum(['existing', 'managed']).default('existing'),
     command: z.string().optional(),

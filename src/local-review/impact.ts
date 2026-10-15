@@ -3,6 +3,7 @@ import path from 'node:path';
 import ts from 'typescript';
 import type { BrowserConfig } from './config.js';
 import { matchesGlob } from './config.js';
+import { customFrameworkMappings } from './custom-framework.js';
 
 const CODE = /\.(?:ts|tsx|js|jsx|mts|mjs|cts|cjs)$/;
 const SKIP = new Set(['.git', 'node_modules', '.next', '.nuxt', 'dist', 'build', 'coverage', '.ai-review', '.turbo']);
@@ -228,8 +229,10 @@ export function analyzeImpact(root: string, changedFiles: string[], config: Brow
     }
   }
 
+  const custom = customFrameworkMappings(workspace, changed, config);
+  warnings.push(...custom.warnings);
   const resultRoutes: ImpactRoute[] = [];
-  const mappings: BrowserConfig['mappings'] = config.mappings.map(mapping => {
+  const mappings: BrowserConfig['mappings'] = custom.mappings.map(mapping => {
     const related = new Set<string>();
     for (const [file, sources] of owners) {
       if (mapping.files.some(pattern => matchesGlob(file, pattern))) {
@@ -237,6 +240,15 @@ export function analyzeImpact(root: string, changedFiles: string[], config: Brow
         resultRoutes.push({
           route: mapping.route, routeFile: file, via: [file],
           sourceFiles: [...sources], confidence: 'explicit'
+        });
+      }
+    }
+    for (const source of changed) {
+      if (mapping.files.some(pattern => matchesGlob(source, pattern))) {
+        related.add(source);
+        if (!resultRoutes.some(r => r.route === mapping.route)) resultRoutes.push({
+          route: mapping.route, routeFile: '(company framework mapping)', via: mapping.files,
+          sourceFiles: [source], confidence: 'explicit'
         });
       }
     }
@@ -292,7 +304,7 @@ export function analyzeImpact(root: string, changedFiles: string[], config: Brow
       existing.via = [...new Set([...existing.via, ...route.via])];
     } else deduped.set(route.route, route);
   }
-  if (!resultRoutes.length) warnings.push('No impacted route identified; configure browser.mappings or use a supported Next.js route.');
+  if (!resultRoutes.length) warnings.push('No impacted route identified; configure browser.mappings and browser.dependencyRules for the company framework.');
   return {
     routes: [...deduped.values()], mappings, scannedFiles: files.length,
     truncated, warnings

@@ -193,3 +193,28 @@ still contact a production database or remote API.
 
 Web mode always rejects click/fill regardless of this flag. AI-proposed actions
 remain read-only and cannot request this permission.
+
+
+## Company-owned C# / JavaScript / HTML frameworks
+
+This project **does not assume ASP.NET MVC, Razor, React Router, or other routing conventions** for a company-owned framework. Use explicit route mappings for business pages and optional dependencyRules for relationships that cannot be observed from JS/HTML imports.
+
+Example:
+
+    browser:
+      baseURL: http://127.0.0.1:3000
+      dependencyRules:
+        - dependencies: ["Server/Services/OrderService.cs"]
+          consumers: ["wwwroot/js/orders.js"]
+      mappings:
+        - files: ["wwwroot/orders.html"]
+          route: /orders
+          scenarios:
+            - id: order-page
+              actions:
+                - { type: goto, path: /orders }
+                - { type: assertVisible, target: { by: role, value: heading, name: Orders } }
+
+The dependency graph can follow HTML \`<script src="/js/orders.js">\` to \`wwwroot/js/orders.js\`, and explicit C# → JavaScript edges. It will not guess proprietary controller names, internal route registration logic, private API conventions or C# call sites. Configure those via \`dependencyRules\` and \`mappings\`. Network/external script URLs are excluded from local dependency inference.
+
+These are test-planning hints, not proof of a code-level root cause. All proposed browser assertions still require observable evidence.
