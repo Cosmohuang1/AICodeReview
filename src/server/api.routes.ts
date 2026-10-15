@@ -244,7 +244,7 @@ apiRouter.get('/git/branches', (req: Request, res: Response) => {
     }
 
     const result = gitService.listBranches(targetPath);
-    res.json(result);
+    res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
