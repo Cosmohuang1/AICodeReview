@@ -171,7 +171,7 @@ async function executeAction(page: Page, action: TestAction, baseURL: string, al
 }
 
 async function executeScenario(scenario: TestScenario, config: BrowserConfig, options: {
-  baseURL: string; endpoint?: string; approveCDP: boolean; artifactDir: string;
+  baseURL: string; endpoint?: string; approveCDP: boolean; approveInteractions?: boolean; artifactDir: string;
 }, allowed: Set<string>): Promise<ScenarioResult> {
   const start = Date.now();
   const messages: string[] = [];
@@ -212,6 +212,9 @@ async function executeScenario(scenario: TestScenario, config: BrowserConfig, op
     }
     const deadline = Date.now() + config.scenarioTimeoutMs;
     for (const action of scenario.actions) {
+      if ((action.type === 'click' || action.type === 'fill') && !options.approveInteractions) {
+        throw new Error('Interactive actions require --approve-interactions (may have side effects)');
+      }
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error('Scenario timeout');
       try {
@@ -266,6 +269,7 @@ export async function runBrowserVerification(options: {
   artifactDir: string;
   approveServerStart: boolean;
   approveCDP: boolean;
+  approveInteractions?: boolean;
   endpoint?: string;
 }): Promise<BrowserVerificationResult> {
   const { config, scenarios } = options;

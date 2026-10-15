@@ -73,13 +73,14 @@ export function registerLocalReviewCommand(program: Command): void {
     .option('--cdp-endpoint <url>', 'approved Chrome CDP endpoint')
     .option('--approve-server-start', 'approve configured dev-server command')
     .option('--approve-cdp', 'approve accessing an existing Chrome CDP session')
+    .option('--approve-interactions', 'allow configured click/fill actions which may have side effects')
     .option('-c, --config <path>', 'repository YAML config', '.ai-review.yml')
     .option('-o, --output <path>', 'Markdown report path')
     .action(async (options: {
       scope: GitScope; base?: string; includeUntracked?: boolean;
       browser?: boolean; browserOnly?: boolean; aiTests?: boolean; baselineUrl?: string; exportTests?: boolean; url?: string;
       serverMode?: 'existing' | 'managed'; browserConnection?: 'isolated' | 'cdp';
-      cdpEndpoint?: string; approveServerStart?: boolean; approveCdp?: boolean;
+      cdpEndpoint?: string; approveServerStart?: boolean; approveCdp?: boolean; approveInteractions?: boolean;
       config: string; output?: string;
     }) => {
       try {
@@ -160,7 +161,8 @@ export function registerLocalReviewCommand(program: Command): void {
             scenarios: planned, unmappedFiles: plan.unmappedFiles,
             warnings, artifactDir: path.join(outputDir, 'artifacts'),
             approveServerStart: Boolean(options.approveServerStart),
-            approveCDP: Boolean(options.approveCdp), endpoint: options.cdpEndpoint
+            approveCDP: Boolean(options.approveCdp),
+            approveInteractions: Boolean(options.approveInteractions), endpoint: options.cdpEndpoint
           });
           if (options.exportTests) {
             const byId = new Map(browser.scenarios.map(s => [s.id, s]));
