@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -42,15 +42,22 @@ browserDescribe('complete local CLI browser-only flow', () => {
 
   it('runs real Chromium from CLI and writes JSON, Markdown, HTML and plan', async () => {
     const output = join(cwd, 'review.md');
-    const child = spawnSync(process.execPath, [
-      '--import', 'tsx', resolve(appRoot, 'src/cli.ts'),
+    const child = spawn(process.execPath, [
+      '--import', import.meta.resolve('tsx'), resolve(appRoot, 'src/cli.ts'),
       'review', '--browser-only', '--url', baseURL, '-o', output
     ], {
-      cwd, encoding: 'utf8',
-      timeout: 35000, maxBuffer: 2 * 1024 * 1024,
+      cwd, stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, DEEPSEEK_API_KEY: '' }
     });
-    expect(child.status, child.stderr + child.stdout).toBe(0);
+    let log = '';
+    child.stdout.on('data', data => { log += String(data); });
+    child.stderr.on('data', data => { log += String(data); });
+    const exit = await new Promise<number | null>((resolve, reject) => {
+      const timeout = setTimeout(() => { child.kill(); reject(new Error('CLI timed out: ' + log)); }, 35000);
+      child.on('error', err => { clearTimeout(timeout); reject(err); });
+      child.on('close', code => { clearTimeout(timeout); resolve(code); });
+    });
+    expect(exit, log).toBe(0);
     expect(existsSync(output)).toBe(true);
     const report = JSON.parse(readFileSync(join(cwd, 'report.json'), 'utf8'));
     expect(report.browser.status).toBe('passed');
